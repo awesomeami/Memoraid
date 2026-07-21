@@ -7,7 +7,7 @@
 
 ## 🚀 Core Features
 
-- **Clinical Input Processor:** Paste textbook paragraphs, drug profiles, symptomatology lists, or physiological pathways. You can now even import photos of the medical material you want mnemonics to be generated for and the app will extract the text for you and use it as the input.
+- **Clinical Input Processor:** Paste textbook paragraphs, drug profiles, symptomatology lists, or physiological pathways.
 - **Cognitive Strategy Pipeline:** Prioritizes real English words over random acronyms. Follows an 8-tier cognitive strategy rule system (word alignments, phonetic pseudo-words, visual stories, anatomical metaphors).
 - **Extracted Key Facts Module:** Extracts, simplifies, and validates strictly accurate physiological and pathological criteria so you don't miss key concepts.
 - **Best Mnemonic (Winner ⭐) & Alternative Strategies:** Recommends the highest-yielding mnemonic accompanied by dual high-quality alternatives using distinct memory techniques (visual analogies, anatomic stories, etc.).

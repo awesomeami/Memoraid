@@ -1473,7 +1473,7 @@ export default function App() {
 
                       <div className="w-full space-y-3">
                         <a
-                          href="https://aistudio.google.com/"
+                          href="https://aistudio.google.com/api-keys"
                           target="_blank"
                           rel="noreferrer"
                           className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-800 dark:bg-white dark:text-black dark:hover:bg-zinc-100 transition-all cursor-pointer shadow-sm"
