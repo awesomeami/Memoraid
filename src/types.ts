@@ -1,6 +1,6 @@
 export const MAX_MEDICAL_TEXT_LENGTH = 4000;
 
-export const DEFAULT_MODEL = "gemini-3.5-flash";
+export const DEFAULT_MODEL = "gemini-3.6-flash";
 export const LITE_MODEL = "gemini-3.1-flash-lite";
 export const PRO_MODEL = "gemini-3.1-pro-preview";
 
