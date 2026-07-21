@@ -763,19 +763,21 @@ for that image rather than skipping it.`;
     const modelOutput = modelResponse.text;
     const rawText = modelOutput ? modelOutput.trim() : "";
 
-    // Parse the response by splitting on the exact separator
-    const sections = rawText.split("---MEMORAID_PAGE_BREAK---");
-    const trimmedSections = sections.map(s => s.trim());
-
-    if (trimmedSections.length !== images.length) {
-      console.warn(`OCR parse error: Expected ${images.length} sections, but parsed ${trimmedSections.length}. Output:`, rawText);
-      return res.status(502).json({ error: "OCR_PARSE_ERROR" });
+    let pages: { index: number; extractedText: string }[] = [];
+    if (images.length === 1) {
+      pages = [{ index: 0, extractedText: rawText }];
+    } else {
+      const sections = rawText.split(/---+\s*MEMORAID_PAGE_BREAK\s*---+/i).map(s => s.trim());
+      if (sections.length === images.length) {
+        pages = sections.map((extractedText, index) => ({ index, extractedText }));
+      } else {
+        console.warn(`OCR page break mismatch: Expected ${images.length} sections, got ${sections.length}. Falling back gracefully.`);
+        pages = images.map((_, index) => ({
+          index,
+          extractedText: sections[index] || (index === 0 ? rawText : "NO_TEXT_FOUND")
+        }));
+      }
     }
-
-    const pages = trimmedSections.map((extractedText, index) => ({
-      index,
-      extractedText
-    }));
 
     return res.json({ pages });
 

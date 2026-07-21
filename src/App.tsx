@@ -313,7 +313,7 @@ export default function App() {
       });
 
       let { width, height } = img;
-      const maxDim = 2000;
+      const maxDim = 1200;
       if (width > maxDim || height > maxDim) {
         if (width > height) {
           height = Math.round((height * maxDim) / width);
@@ -333,7 +333,7 @@ export default function App() {
       }
       ctx.drawImage(img, 0, 0, width, height);
 
-      const jpegBase64Url = canvas.toDataURL("image/jpeg", 0.85);
+      const jpegBase64Url = canvas.toDataURL("image/jpeg", 0.75);
       const prefix = "data:image/jpeg;base64,";
       if (!jpegBase64Url.startsWith(prefix)) {
         throw new Error("Failed to export image as base64 JPEG.");
@@ -569,7 +569,7 @@ export default function App() {
         setErrorMessage(err.message);
         setErrorType(err.type);
       } else {
-        setErrorMessage("Failed to read image files or connect to generative server.");
+        setErrorMessage(err?.message || "Failed to read image files or connect to generative server.");
         setErrorType("server");
       }
     } finally {
