@@ -1,31 +1,32 @@
 # Memoraid 🧠✨
 ### The Intelligent AI-Powered Medical Mnemonic Generator
 
-**Memoraid** is a state-of-the-art full-stack educational companion designed for medical students, nursing students, pharmacy students, residents, and healthcare professionals. By combining **clinical precision** with **cognitive learning science**, the application converts dense medical facts, symptoms, drug classes, or diagnostic guidelines into highly structured, intuitive, and long-term memorable study guides.
+**Memoraid** is a full-stack educational companion for medical students, nursing students, pharmacy students, residents, and healthcare professionals. It converts dense medical facts, symptoms, drug classes, or diagnostic guidelines into structured, memorable study guides — either by pasting text directly or by uploading a photo of the source material.
 
 ---
 
 ## 🚀 Core Features
 
-- **Clinical Input Processor:** Paste textbook paragraphs, drug profiles, symptomatology lists, or physiological pathways. You can now even import photos of the medical material you want mnemonics to be generated for and the app will extract the text for you and use it as the input.
-- **Cognitive Strategy Pipeline:** Prioritizes real English words over random acronyms. Follows an 8-tier cognitive strategy rule system (word alignments, phonetic pseudo-words, visual stories, anatomical metaphors).
-- **Extracted Key Facts Module:** Extracts, simplifies, and validates strictly accurate physiological and pathological criteria so you don't miss key concepts.
-- **Best Mnemonic (Winner ⭐) & Alternative Strategies:** Recommends the highest-yielding mnemonic accompanied by dual high-quality alternatives using distinct memory techniques (visual analogies, anatomic stories, etc.).
-- **Interactive Memorability Score Gauges:** Every mnemonic features a 1–10 clinical gauge rating pronunciation ease, simplicity, and visual impact.
-- **Custom Memory Trick Imagery:** Delivers detailed, humorous, or highly sensory scenes designed to lock the mnemonic in your long-term mental files.
-- **Copy & Download Controls:** Copy study notes instantly, or download formatted **Markdown (.md)** files to import directly into Obsidian, Notion, or Anki.
-- **History & Pinned Guides:** Search and filter your local study archive by keywords or specific medical specialties (Pharmacology, Anatomy, Cardiology, etc.). Pin high-yield notes to the top.
-- **Saved Favorites Repository:** Separate bookmark registry for rapid active-recall revision.
-- **Polished Responsive Design:** Sleek medical-themed UI with fluid layout transitions and fully supported **Light Mode** & **Dark Mode**.
+- **Clinical Input Processor:** Paste textbook paragraphs, drug profiles, symptomatology lists, or physiological pathways directly into the input box.
+- **Photo Import & OCR:** Upload or snap up to 3 photos (JPEG, PNG, or WebP) of textbook pages, slides, or handwritten notes. Memoraid transcribes the readable text from each image and drops it straight into the input box, ready to generate from — no manual retyping.
+- **Cognitive Strategy Pipeline:** Follows an 8-tier, priority-ordered rule system — real-word acronyms first, then pronounceable pseudo-words, then visual/anatomical storytelling styles — so mnemonics stay natural instead of forced letter soup.
+- **Best Mnemonic (Winner ⭐) + One Alternative:** Every generation returns a top-recommended mnemonic plus one high-quality alternative using a different memory technique, so you have a fallback if the first doesn't click.
+- **Interactive Memorability Score:** Each mnemonic gets a 1–10 clinical gauge rating pronunciation ease, simplicity, and recall strength.
+- **Flexible Export:** Copy to clipboard, export as Markdown (for Obsidian/Notion), export as an Anki-ready text file, or download as a PDF or PNG card.
+- **History & Pinned Guides:** Search and filter your study archive by keyword or medical specialty (Pharmacology, Anatomy, Cardiology, etc.), and pin high-yield notes to the top.
+- **Saved Favorites Repository:** A separate bookmark list for rapid active-recall revision.
+- **Google Sign-In with Cross-Device Sync:** Sign in to sync your history and favorites via Firestore, or continue as a guest with local-only storage.
+- **Bring-Your-Own-Key, with Automatic Rotation:** Add up to 5 personal Gemini API keys in Settings. If one hits a rate limit, Memoraid automatically retries with the next key instead of failing the request.
+- **Polished Responsive Design:** Medical-themed UI with Light Mode and Dark Mode.
 
 ---
 
 ## 🛠️ Technology Stack
 
 - **Frontend:** React 19, Vite, Tailwind CSS, Lucide Icons, and Motion animations.
-- **Backend:** Express, Node.js, TypeScript, and standard `.env` configuration.
-- **AI Core:** Google Gemini API using the modern `@google/genai` TypeScript SDK (supporting `gemini-3.5-flash` for blazing-fast generations and `gemini-3.1-pro-preview` for deep clinical synthesis).
-- **Local Persistence:** Synchronization with browser `localStorage` ensuring your study archives, favorites, search indexes, and pins survive restarts.
+- **Backend:** Express, Node.js, TypeScript.
+- **AI:** Google Gemini API via the `@google/genai` SDK — model and API key are user-configurable in Settings.
+- **Auth & Storage:** Firebase Authentication (Google Sign-In + anonymous guest mode) and Firestore, with local `localStorage` persistence as a fallback/cache.
 
 ---
 
@@ -33,62 +34,71 @@
 
 ```text
 /
-├── server.ts               # Express Entry point with Vite middleware and API routes
-├── package.json            # Scripts, dependency versions, and metadata configuration
-├── metadata.json           # Application identity and major capabilities configurations
-├── index.html              # Core HTML SPA layout
-├── tsconfig.json           # Strict TypeScript configuration
-├── vite.config.ts          # Vite asset server and environment configurations
+├── server.ts                    # Express entry point with Vite middleware (local/Docker)
+├── api/index.ts                 # Serverless entry point (Vercel)
+├── package.json                 # Scripts, dependency versions, and metadata
+├── metadata.json                # Application identity configuration
+├── index.html                   # Core HTML SPA layout
+├── tsconfig.json                # Strict TypeScript configuration
+├── vite.config.ts               # Vite build and dev-server configuration
+├── vercel.json                  # Vercel routing, headers, and function config
+├── firebase-applet-config.json  # Public Firebase web app config (client-side)
+├── firestore.rules              # Per-user Firestore access rules
 └── src/
-    ├── App.tsx             # Main React application orchestration and state managers
-    ├── main.tsx            # Main frontend entry point
-    ├── index.css           # Global Tailwind and webfont typography pairings
-    ├── types.ts            # Type-safe clinical schemas and specialty static lists
+    ├── App.tsx                  # Main application state and orchestration
+    ├── main.tsx                 # Frontend entry point
+    ├── index.css                # Global Tailwind styles
+    ├── types.ts                 # Shared types, model constants, specialty lists
+    ├── server-app.ts            # Express app: Gemini proxy, OCR, auth, rate limiting
+    ├── lib/
+    │   ├── firebase.ts          # Firebase client SDK setup (auth + Firestore)
+    │   └── db.ts                # Firestore read/write helpers for mnemonics
     └── components/
-        ├── Header.tsx      # Dashboard navigation, tab triggers, and dark mode toggles
-        ├── HeroSection.tsx # Landing introduction and interactive clinical presets
-        ├── MnemonicCard.tsx# Detailed mnemonic visual layout, copy/download, and scoring
-        ├── HistorySidebar.tsx# Archive search, filtering, pin groups, and mini item templates
-        └── FavoritesGrid.tsx# Bookmarked collection with markdown exporters
+        ├── Header.tsx           # Navigation, tab triggers, dark mode toggle
+        ├── HeroSection.tsx      # Landing intro and clinical presets
+        ├── SignInScreen.tsx     # Google Sign-In / guest entry screen
+        ├── SettingsTab.tsx      # Gemini API key management and model selection
+        ├── MnemonicCard.tsx     # Mnemonic display, scoring, and export controls
+        ├── HistorySidebar.tsx   # Archive search, filtering, and pin groups
+        └── FavoritesGrid.tsx    # Bookmarked collection view
 ```
 
 ---
 
 ## 🔑 Environment Configuration
 
-To run the application, configure your secrets inside `.env` or in your hosting environment:
+Configure these inside `.env` (local) or your hosting provider's environment variables:
 
 ```env
-# Google Gemini API key used for the server-side proxy
+# Only used in the AI Studio sandbox environment — NOT used in production,
+# since users provide their own personal Gemini API key in the Settings tab.
 GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
 
-# The deployment base URL
+# The deployment base URL.
 APP_URL="http://localhost:3000"
 
-# (Optional / Required on Vercel) Firebase Admin Service Account JSON credentials.
+# Required for non-GCP hosting (e.g. Vercel). Generate in Firebase Console:
+# Project Settings -> Service Accounts -> Generate new private key.
 # Value should be the entire JSON string on a single line.
-# Generate this value in the Firebase Console: Project Settings -> Service Accounts -> Generate new private key.
 FIREBASE_SERVICE_ACCOUNT_KEY='{"type": "service_account", "project_id": "...", ...}'
 ```
-
-*Note: In the Google AI Studio build sandbox, your secret is automatically injected from the Secrets sidebar.*
 
 ---
 
 ## 🖥️ Local Installation & Running
 
-1. **Install Base Dependencies:**
+1. **Install dependencies:**
    ```bash
    npm install
    ```
 
-2. **Boot the Development Server:**
+2. **Start the dev server:**
    ```bash
    npm run dev
    ```
-   The application will run on [http://localhost:3000](http://localhost:3000) inside your local environment.
+   Runs at [http://localhost:3000](http://localhost:3000).
 
-3. **Verify Code Quality (Linting):**
+3. **Type-check:**
    ```bash
    npm run lint
    ```
@@ -97,44 +107,35 @@ FIREBASE_SERVICE_ACCOUNT_KEY='{"type": "service_account", "project_id": "...", .
 
 ## 🚢 Production Build & Deployment
 
-To bundle the application for production or container deployment (e.g., Cloud Run):
+**Build:**
+```bash
+npm run build
+```
+Compiles the frontend to `dist/` and bundles the Express backend into `dist/server.cjs` via esbuild (used for standalone/Docker deployments — not needed on Vercel, which builds `api/index.ts` separately).
 
-1. **Build the Application:**
-   ```bash
-   npm run build
-   ```
-   This compiles the React frontend to static assets inside `dist/` and bundles the Express backend server into a single, self-contained CommonJS file (`dist/server.cjs`) using `esbuild`.
+**Run:**
+```bash
+npm run start
+```
 
-2. **Start the Production App:**
-   ```bash
-   npm run start
-   ```
+**Docker:**
+```dockerfile
+FROM node:20-slim
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY . .
+RUN npm run build
+EXPOSE 3000
+CMD ["npm", "run", "start"]
+```
 
-3. **Docker Deployment:**
-   Deploy using standard Node.js base images, ensuring port `3000` is exposed:
-   ```dockerfile
-   FROM node:20-slim
-   WORKDIR /app
-   COPY package*.json ./
-   RUN npm ci --omit=dev
-   COPY . .
-   RUN npm run build
-   EXPOSE 3000
-   CMD ["npm", "run", "start"]
-   ```
+**Vercel:**
+1. Connect your GitHub repository to Vercel.
+2. In Project Settings → Environment Variables, add `FIREBASE_SERVICE_ACCOUNT_KEY`.
+3. Deploy — Vercel runs `vite build` for the frontend and builds `api/index.ts` as a serverless function automatically. All `/api/*` routes are rewritten to it, with a 60-second `maxDuration`.
 
-4. **Vercel Serverless Deployment:**
-   - Because Vercel is a serverless environment, the application is refactored to support stateless function executions:
-     - **Vite Frontend:** Compiled statically and served automatically from `/dist`.
-     - **Express Backend:** Executed on-demand as a serverless function inside `/api/index.ts`. All `/api/*` endpoints are dynamically routed to this function via `vercel.json`.
-     - **Duration Limit:** The `vercel.json` configures the `maxDuration` parameter to `60` seconds for the `/api` functions to ensure structured JSON responses from Gemini have ample time to complete.
-     - **Configuration Steps:**
-       1. Connect your GitHub repository containing this codebase to Vercel.
-       2. Go to your project Settings -> Environment Variables.
-       3. (Not required on Vercel: users securely configure their own key via Settings)
-       4. Add `FIREBASE_SERVICE_ACCOUNT_KEY` (the complete JSON string of your Firebase service account key, allowing the serverless environment to verify credentials without local Application Default Credentials).
-       5. Deploy! Vercel's zero-config will automatically run `npm run build` and provision the frontend static assets and serverless functions correctly.
-      - **⚠️ Firebase Authorized Domains Callout:** You must add your deployed Vercel domain (as well as any custom domain you associate with the project) to **Firebase Console → Authentication → Settings → Authorized domains**. If you omit this step, Google Sign-In attempts will fail with an `unauthorized-domain` error.
-      - **⏱️ Serverless Function Timeout Callout:** Make sure that the actual serverless function execution timeout allowed on your Vercel plan matches or exceeds the `60` seconds `maxDuration` parameter specified in `vercel.json` (Hobby plans default to a 10s limit and require special configuration or upgrades, while Pro/Enterprise support up to 300s). Because Gemini Pro-model requests and automatic multi-key sequential retry backoffs can occasionally run long, an inadequate function timeout will lead to premature truncation of the stream.
-
----
+**Known gotchas:**
+- **Authorized domains:** Add your Vercel domain (and any custom domain) to Firebase Console → Authentication → Settings → Authorized domains, or Google Sign-In will fail.
+- **Function timeout:** Vercel Hobby plans default to a 10s function timeout regardless of the `maxDuration` set in `vercel.json` — Pro-model requests and multi-key retries can exceed that. Upgrade or adjust expectations accordingly.
+- **Request size limit:** Vercel Functions cap request bodies at 4.5MB. The photo OCR feature compresses images client-side before upload, but very large or numerous photos can still approach this ceiling.
