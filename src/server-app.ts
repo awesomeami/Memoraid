@@ -16,7 +16,8 @@ try {
   if (fs.existsSync(configPath)) {
     firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
   } else {
-    const fallbackPath = path.resolve(process.cwd(), "firebase-applet-config.json");
+    // Try one directory up (for vercel or other runtimes)
+    const fallbackPath = path.join(process.cwd(), "..", "firebase-applet-config.json");
     if (fs.existsSync(fallbackPath)) {
       firebaseConfig = JSON.parse(fs.readFileSync(fallbackPath, "utf-8"));
     }
