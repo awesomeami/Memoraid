@@ -242,7 +242,7 @@ export default function App() {
     setOcrNote(null);
   };
 
-  const addFilesToQueue = (files: File[]) => {
+  const addFilesToQueue = async (files: File[]) => {
     if (isOcrExtracting) return;
     setOcrNote(null);
     setErrorMessage("");
@@ -274,33 +274,47 @@ export default function App() {
 
     if (validFiles.length === 0) return;
 
-    setOcrQueue(prev => {
-      const currentCount = prev.length;
-      if (currentCount >= 3) {
-        setOcrNote(`Queue is already full (3/3). Skipped ${validFiles.length} photo(s).`);
-        return prev;
-      }
+    const currentCount = ocrQueue.length;
+    if (currentCount >= 3) {
+      setOcrNote(`Queue is already full (3/3). Skipped ${validFiles.length} photo(s).`);
+      return;
+    }
 
-      const spaceLeft = 3 - currentCount;
-      const filesToAdd = validFiles.slice(0, spaceLeft);
-      const skippedCount = validFiles.length - filesToAdd.length;
+    const spaceLeft = 3 - currentCount;
+    const filesToAdd = validFiles.slice(0, spaceLeft);
+    const skippedCount = validFiles.length - filesToAdd.length;
 
-      if (skippedCount > 0) {
-        setOcrNote(`Added ${filesToAdd.length} photo(s). Skipped ${skippedCount} to respect the 3-photo limit.`);
-      }
+    if (skippedCount > 0) {
+      setOcrNote(`Added ${filesToAdd.length} photo(s). Skipped ${skippedCount} to respect the 3-photo limit.`);
+    }
 
-      const newItems = filesToAdd.map(file => ({
-        id: crypto.randomUUID(),
-        file,
-        objectUrl: URL.createObjectURL(file)
-      }));
+    try {
+      const newItems = await Promise.all(
+        filesToAdd.map(async (file) => ({
+          id: crypto.randomUUID(),
+          file,
+          objectUrl: await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          })
+        }))
+      );
 
-      return [...prev, ...newItems];
-    });
+      setOcrQueue(prev => {
+        const remainingSpace = 3 - prev.length;
+        if (remainingSpace <= 0) return prev;
+        return [...prev, ...newItems.slice(0, remainingSpace)];
+      });
+    } catch (err) {
+      console.error("Failed to read files:", err);
+      setErrorMessage("Failed to read image files.");
+      setErrorType("server");
+    }
   };
 
-  const compressImage = async (file: File, controllerSignal: AbortSignal): Promise<{ imageBase64: string; mimeType: string }> => {
-    const objectUrl = URL.createObjectURL(file);
+  const compressImage = async (file: File, objectUrl: string, controllerSignal: AbortSignal): Promise<{ imageBase64: string; mimeType: string }> => {
     try {
       const img = new Image();
       img.src = objectUrl;
@@ -370,7 +384,7 @@ export default function App() {
 
       // 1. Compress all queued images
       const compressedImages = await Promise.all(
-        ocrQueue.map(item => compressImage(item.file, controller.signal))
+        ocrQueue.map(item => compressImage(item.file, item.objectUrl, controller.signal))
       );
 
       let success = false;
