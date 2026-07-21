@@ -6,9 +6,24 @@ import { initializeApp, cert, App, getApps, getApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore, Firestore, Timestamp } from "firebase-admin/firestore";
 import fs from "fs";
-import firebaseConfig from "../firebase-applet-config.json";
 
-import { MAX_MEDICAL_TEXT_LENGTH, DEFAULT_MODEL, PRO_MODEL } from "./types";
+import { MAX_MEDICAL_TEXT_LENGTH, DEFAULT_MODEL, PRO_MODEL } from "./types.js";
+
+// Safe dynamic loading of firebase-applet-config.json for Node.js ESM compatibility
+let firebaseConfig: any = {};
+try {
+  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+  if (fs.existsSync(configPath)) {
+    firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+  } else {
+    const fallbackPath = path.resolve(process.cwd(), "firebase-applet-config.json");
+    if (fs.existsSync(fallbackPath)) {
+      firebaseConfig = JSON.parse(fs.readFileSync(fallbackPath, "utf-8"));
+    }
+  }
+} catch (e) {
+  console.error("Error loading firebase-applet-config.json:", e);
+}
 
 dotenv.config();
 

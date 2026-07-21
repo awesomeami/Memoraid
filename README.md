@@ -7,7 +7,7 @@
 
 ## 🚀 Core Features
 
-- **Clinical Input Processor:** Paste textbook paragraphs, drug profiles, symptomatology lists, or physiological pathways. You can even import photos lf your textbook and the app will extract the text from that image and use it as the input!
+- **Clinical Input Processor:** Paste textbook paragraphs, drug profiles, symptomatology lists, or physiological pathways.
 - **Cognitive Strategy Pipeline:** Prioritizes real English words over random acronyms. Follows an 8-tier cognitive strategy rule system (word alignments, phonetic pseudo-words, visual stories, anatomical metaphors).
 - **Extracted Key Facts Module:** Extracts, simplifies, and validates strictly accurate physiological and pathological criteria so you don't miss key concepts.
 - **Best Mnemonic (Winner ⭐) & Alternative Strategies:** Recommends the highest-yielding mnemonic accompanied by dual high-quality alternatives using distinct memory techniques (visual analogies, anatomic stories, etc.).
@@ -138,3 +138,4 @@ To bundle the application for production or container deployment (e.g., Cloud Ru
       - **⏱️ Serverless Function Timeout Callout:** Make sure that the actual serverless function execution timeout allowed on your Vercel plan matches or exceeds the `60` seconds `maxDuration` parameter specified in `vercel.json` (Hobby plans default to a 10s limit and require special configuration or upgrades, while Pro/Enterprise support up to 300s). Because Gemini Pro-model requests and automatic multi-key sequential retry backoffs can occasionally run long, an inadequate function timeout will lead to premature truncation of the stream.
 
 ---
+*Created with clinical precision using Google Gemini cognitive inference. Dedicated to medical education excellence.*
