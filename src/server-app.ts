@@ -7,7 +7,7 @@ import { getAuth } from "firebase-admin/auth";
 import { getFirestore, Firestore, Timestamp } from "firebase-admin/firestore";
 import fs from "fs";
 
-import { MAX_MEDICAL_TEXT_LENGTH, DEFAULT_MODEL, PRO_MODEL } from "./types.js";
+import { MAX_MEDICAL_TEXT_LENGTH, DEFAULT_MODEL, LITE_MODEL, PRO_MODEL } from "./types.js";
 
 // Safe dynamic loading of firebase-applet-config.json for Node.js ESM compatibility
 let firebaseConfig: any = {};
@@ -569,7 +569,7 @@ You must return a structured JSON response matching the required schema. Ensure 
 
     let response: any = null;
     let attempts = 0;
-    const maxAttempts = 3;
+    const maxAttempts = 2;
     const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
     while (attempts < maxAttempts) {
@@ -589,7 +589,7 @@ You must return a structured JSON response matching the required schema. Ensure 
         const isUnavailable = isServiceUnavailableError(geminiError);
 
         if (isUnavailable && attempts < maxAttempts) {
-          const backoffMs = attempts === 1 ? 1000 : 2000;
+          const backoffMs = 500;
           console.warn(`Gemini API 503/UNAVAILABLE error encountered (attempt ${attempts}/${maxAttempts}). Retrying in ${backoffMs}ms... Error:`, geminiError.message || geminiError);
           await delay(backoffMs);
         } else {

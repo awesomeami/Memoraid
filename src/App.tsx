@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense, useCallback } from "react";
-import { MnemonicResult, ActiveTab, MEDICAL_SPECIALTIES, MNEMONIC_STYLES, MnemonicDetails, MAX_MEDICAL_TEXT_LENGTH, DEFAULT_MODEL, PRO_MODEL } from "./types";
+import { MnemonicResult, ActiveTab, MEDICAL_SPECIALTIES, MNEMONIC_STYLES, MnemonicDetails, MAX_MEDICAL_TEXT_LENGTH, DEFAULT_MODEL, LITE_MODEL, PRO_MODEL } from "./types";
 import Header from "./components/Header";
 import HeroSection from "./components/HeroSection";
 import MnemonicCard from "./components/MnemonicCard";
@@ -425,9 +425,7 @@ export default function App() {
             break;
           }
 
-          if (!isJson) {
-            throw new GenError("The server returned an unexpected response — this looks like a temporary backend issue, not a problem with your API keys.", "server");
-          }
+          if (!isJson) { if (response.status === 504) { throw new GenError("The server timed out waiting for the AI to respond. Please try again.", "server"); } else if (response.status === 502 || response.status === 503) { throw new GenError("The AI service is currently experiencing high demand and returned a gateway error. Please try again later.", "server"); } throw new GenError("The server returned an unexpected response — this looks like a temporary backend issue, not a problem with your API keys.", "server"); }
 
           const isKeyOrQuotaError = 
             response.status === 403 || 
@@ -1026,9 +1024,7 @@ export default function App() {
             break;
           }
 
-          if (!isJson) {
-            throw new GenError("The server returned an unexpected response — this looks like a temporary backend issue, not a problem with your API keys.", "server");
-          }
+          if (!isJson) { if (response.status === 504) { throw new GenError("The server timed out waiting for the AI to respond. Please try again.", "server"); } else if (response.status === 502 || response.status === 503) { throw new GenError("The AI service is currently experiencing high demand and returned a gateway error. Please try again later.", "server"); } throw new GenError("The server returned an unexpected response — this looks like a temporary backend issue, not a problem with your API keys.", "server"); }
 
           const isKeyOrQuotaError = 
             response.status === 403 || 
@@ -1752,7 +1748,25 @@ export default function App() {
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-2">
                           Generative Engine Choice
                         </span>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedModel(LITE_MODEL)}
+                            className={`flex flex-col items-start rounded-lg p-2 border text-left transition-all ${
+                              selectedModel === LITE_MODEL
+                                ? "border-blue-500 bg-blue-50/10 dark:bg-blue-950/20"
+                                : "border-slate-100 bg-white hover:bg-slate-100/50 dark:border-zinc-800 dark:bg-zinc-900"
+                            }`}
+                          >
+                            <span className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1">
+                              Flash Lite
+                              <span className="rounded bg-blue-100 dark:bg-blue-950 px-1 py-0.2 text-[8px] font-bold text-blue-700 dark:text-blue-400">
+                                Fast
+                              </span>
+                            </span>
+                            <span className="text-[9px] text-slate-400 mt-0.5">Most reliable availability</span>
+                          </button>
+
                           <button
                             type="button"
                             onClick={() => setSelectedModel(DEFAULT_MODEL)}
