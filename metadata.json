@@ -1,0 +1,6 @@
+{
+  "name": "Memoraid",
+  "description": "An Intelligent AI-Powered Medical Mnemonic Generator for students and healthcare professionals.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

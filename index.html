@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Memoraid — AI Medical Mnemonic Generator</title>
+    <meta name="description" content="AI Medical Mnemonic Generator — Memoraid helps medical students and clinical professionals supercharge medical recall." />
+    
+    <!-- Theme color meta tag -->
+    <meta name="theme-color" content="#2563eb" />
+    
+    <!-- Favicon & Apple Touch Icon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2224%22 fill=%22%232563eb%22/><path d=%22M50 25v50M25 50h50%22 stroke=%22white%22 stroke-width=%2212%22 stroke-linecap=%22round%22/></svg>" />
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2224%22 fill=%22%232563eb%22/><path d=%22M50 25v50M25 50h50%22 stroke=%22white%22 stroke-width=%2212%22 stroke-linecap=%22round%22/></svg>" />
+
+    <!-- Open Graph Meta Tags -->
+    <meta property="og:title" content="Memoraid — AI Medical Mnemonic Generator" />
+    <meta property="og:description" content="Supercharge your clinical retention. Generate and save custom mnemonics, study decks, and visual memorization metaphors." />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&w=1200&h=630&q=80" />
+
+    <!-- Twitter Card Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Memoraid — AI Medical Mnemonic Generator" />
+    <meta name="twitter:description" content="Supercharge your clinical retention. Generate and save custom mnemonics, study decks, and visual memorization metaphors." />
+    <meta name="twitter:image" content="https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&w=1200&h=630&q=80" />
+
+    <!-- Google Fonts Preconnect and Stylesheets -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    
+    <script>
+      (function() {
+        const stored = localStorage.getItem('medmnemonic_theme');
+        if (stored === 'dark' || !stored) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
