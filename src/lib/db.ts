@@ -125,3 +125,65 @@ export async function getUserFavorites(uid: string): Promise<MnemonicResult[]> {
   }
 }
 
+/**
+ * Deletes all non-favorite mnemonics for a specific user.
+ */
+export async function deleteNonFavoriteUserMnemonics(uid: string): Promise<void> {
+  try {
+    const colRef = collection(db, "users", uid, "mnemonics");
+    const querySnapshot = await getDocs(colRef);
+    const docs = querySnapshot.docs.filter(doc => !doc.data().isFavorite);
+    for (let i = 0; i < docs.length; i += 500) {
+      const chunk = docs.slice(i, i + 500);
+      const batch = writeBatch(db);
+      chunk.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+  } catch (error) {
+    console.error("Error deleting non-favorite mnemonics:", error);
+    throw error;
+  }
+}
+
+/**
+ * Deletes all mnemonics for a specific user.
+ */
+export async function deleteAllUserMnemonics(uid: string): Promise<void> {
+  try {
+    const colRef = collection(db, "users", uid, "mnemonics");
+    const querySnapshot = await getDocs(colRef);
+    const docs = querySnapshot.docs;
+    for (let i = 0; i < docs.length; i += 500) {
+      const chunk = docs.slice(i, i + 500);
+      const batch = writeBatch(db);
+      chunk.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+  } catch (error) {
+    console.error("Error deleting all mnemonics:", error);
+    throw error;
+  }
+}
+
+/**
+ * Clears all favorites for a specific user by setting isFavorite to false.
+ */
+export async function clearAllUserFavorites(uid: string): Promise<void> {
+  try {
+    const colRef = collection(db, "users", uid, "mnemonics");
+    const q = query(colRef, where("isFavorite", "==", true));
+    const querySnapshot = await getDocs(q);
+    const docs = querySnapshot.docs;
+    for (let i = 0; i < docs.length; i += 500) {
+      const chunk = docs.slice(i, i + 500);
+      const batch = writeBatch(db);
+      chunk.forEach(d => batch.update(d.ref, { isFavorite: false }));
+      await batch.commit();
+    }
+  } catch (error) {
+    console.error("Error clearing all favorites:", error);
+    throw error;
+  }
+}
+
+

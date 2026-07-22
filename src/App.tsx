@@ -11,7 +11,7 @@ const SettingsTab = lazy(() => import("./components/SettingsTab"));
 import { Sparkles, Brain, FileText, AlertCircle, RefreshCw, Trash2, Plus, Info, Key, Settings as SettingsIcon, ExternalLink, X, ChevronDown, Award, Loader2, Upload, Camera } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { auth, onAuthStateChanged, User, signOut, googleProvider, signInWithPopup } from "./lib/firebase";
-import { getUserMnemonics, saveUserMnemonic, deleteUserMnemonic, migrateLocalToFirestore, getUserFavorites } from "./lib/db";
+import { getUserMnemonics, saveUserMnemonic, deleteUserMnemonic, migrateLocalToFirestore, getUserFavorites, deleteAllUserMnemonics, clearAllUserFavorites, deleteNonFavoriteUserMnemonics } from "./lib/db";
 
 // List of fun rotating status messages to display on the clinical loader
 const LOADING_STATUSES = [
@@ -1265,6 +1265,37 @@ export default function App() {
     }
   };
 
+  const handleClearAllHistory = async () => {
+    const remainingFavorites = history.filter(item => item.isFavorite);
+    setHistory(remainingFavorites);
+    setFavorites(remainingFavorites);
+    if (activeMnemonic && !activeMnemonic.isFavorite) {
+      setActiveMnemonic(null);
+    }
+    if (currentUser && !currentUser.isAnonymous) {
+      try {
+        await deleteNonFavoriteUserMnemonics(currentUser.uid);
+      } catch (dbErr) {
+        console.error("Failed to clear non-favorite mnemonics from Firestore:", dbErr);
+      }
+    }
+  };
+
+  const handleClearAllFavorites = async () => {
+    setHistory((prev) => prev.map(item => ({ ...item, isFavorite: false })));
+    setFavorites([]);
+    if (activeMnemonic) {
+      setActiveMnemonic({ ...activeMnemonic, isFavorite: false });
+    }
+    if (currentUser && !currentUser.isAnonymous) {
+      try {
+        await clearAllUserFavorites(currentUser.uid);
+      } catch (dbErr) {
+        console.error("Failed to clear all favorites from Firestore:", dbErr);
+      }
+    }
+  };
+
   // Swap an alternative mnemonic with the top best mnemonic
   const handleSelectAlternativeAsBest = useCallback(async (alternativeIdx: number) => {
     if (!activeMnemonic) return;
@@ -2101,6 +2132,7 @@ export default function App() {
                   onDeleteMnemonic={handleDeleteMnemonic}
                   onTogglePin={handleTogglePin}
                   onToggleFavorite={handleToggleFavorite}
+                  onClearAll={handleClearAllHistory}
                   hasMore={hasMoreHistory}
                   onLoadMore={handleLoadMoreHistory}
                   isLoadingMore={isLoadingMoreHistory}
@@ -2130,6 +2162,7 @@ export default function App() {
                   history={favorites}
                   onSelectMnemonic={handleSelectFromHistory}
                   onToggleFavorite={handleToggleFavorite}
+                  onClearAll={handleClearAllFavorites}
                 />
               </Suspense>
             </motion.div>

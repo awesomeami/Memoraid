@@ -9,6 +9,7 @@ interface HistorySidebarProps {
   onDeleteMnemonic: (id: string) => void;
   onTogglePin: (id: string) => void;
   onToggleFavorite: (id: string) => void;
+  onClearAll?: () => void;
   hasMore?: boolean;
   onLoadMore?: () => void;
   isLoadingMore?: boolean;
@@ -23,6 +24,7 @@ export default function HistorySidebar({
   onDeleteMnemonic,
   onTogglePin,
   onToggleFavorite,
+  onClearAll,
   hasMore = false,
   onLoadMore,
   isLoadingMore = false,
@@ -31,6 +33,7 @@ export default function HistorySidebar({
   isSearchingFullHistory = false,
 }: HistorySidebarProps) {
   const [selectedSpecialty, setSelectedSpecialty] = useState("All");
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // Filter history based on search query and selected specialty
   const { filteredHistory, pinnedItems, unpinnedItems } = useMemo(() => {
@@ -74,11 +77,46 @@ export default function HistorySidebar({
             Search, pin, and manage your generated medical study guides
           </p>
         </div>
-        <div className="flex items-center gap-2 rounded-xl bg-slate-50 p-2 text-xs font-semibold text-slate-600 dark:bg-slate-900 dark:text-slate-400 border border-slate-100/50 dark:border-slate-800/50">
-          <span>Total Generated:</span>
-          <span className="rounded-full bg-blue-100 px-2 py-0.5 font-bold text-blue-700 dark:bg-blue-950/40 dark:text-blue-400">
-            {history.length}
-          </span>
+        <div className="flex items-center gap-2">
+          {history.length > 0 && onClearAll && (
+            <div className="relative">
+              {showClearConfirm ? (
+                <div className="flex items-center gap-1 rounded-xl bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-950/30 p-2 text-xs">
+                  <span className="text-rose-600 dark:text-rose-400 font-bold px-1">Clear All?</span>
+                  <button
+                    onClick={() => {
+                      onClearAll();
+                      setShowClearConfirm(false);
+                    }}
+                    className="rounded bg-rose-600 text-white px-2 py-1 font-bold hover:bg-rose-700 cursor-pointer transition-colors"
+                  >
+                    Yes
+                  </button>
+                  <button
+                    onClick={() => setShowClearConfirm(false)}
+                    className="rounded bg-slate-200 text-slate-700 dark:bg-zinc-800 dark:text-zinc-300 px-2 py-1 font-bold hover:bg-slate-300 dark:hover:bg-zinc-700 cursor-pointer transition-colors"
+                  >
+                    No
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowClearConfirm(true)}
+                  className="flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-semibold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors shadow-sm cursor-pointer"
+                  title="Clear all generated mnemonics"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span>Clear All</span>
+                </button>
+              )}
+            </div>
+          )}
+          <div className="flex items-center gap-2 rounded-xl bg-slate-50 p-2 text-xs font-semibold text-slate-600 dark:bg-slate-900 dark:text-slate-400 border border-slate-100/50 dark:border-slate-800/50">
+            <span>Total Generated:</span>
+            <span className="rounded-full bg-blue-100 px-2 py-0.5 font-bold text-blue-700 dark:bg-blue-950/40 dark:text-blue-400">
+              {history.length}
+            </span>
+          </div>
         </div>
       </div>
 
