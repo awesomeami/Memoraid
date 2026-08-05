@@ -1,5 +1,5 @@
 # Memoraid 🧠✨
-### The Intelligent AI-Powered Medical Mnemonic Generator
+### The Intelligent AI-Powered Medical Mnemonic Generator!
 
 **Memoraid** is a full-stack educational companion for medical students, nursing students, pharmacy students, residents, and healthcare professionals. It converts dense medical facts, symptoms, drug classes, or diagnostic guidelines into structured, memorable study guides — either by pasting text directly or by uploading a photo of the source material.
 
