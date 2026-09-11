@@ -7,7 +7,10 @@ import { getAuth } from "firebase-admin/auth";
 import { getFirestore, Firestore, Timestamp } from "firebase-admin/firestore";
 import fs from "fs";
 
-import { MAX_MEDICAL_TEXT_LENGTH, DEFAULT_MODEL, LITE_MODEL, PRO_MODEL } from "./types.js";
+import { MAX_MEDICAL_TEXT_LENGTH, DEFAULT_MODEL } from "./types.js";
+import { geminiRouter, ModelRoutingError } from "./lib/gemini-router.js";
+import { parseModelTier } from "./models.js";
+import { parseMnemonicResponse } from "./lib/mnemonic-response.js";
 
 // Safe dynamic loading of firebase-applet-config.json for Node.js ESM compatibility
 let firebaseConfig: any = {};
@@ -266,6 +269,8 @@ const app = express();
 
 // Simple request logger middleware (method + path)
 app.use((req, res, next) => {
+  // Leave headroom below vercel.json's 60-second limit, including auth/rate-limit work.
+  res.locals.geminiDeadline = Date.now() + 50_000;
   console.log(`[Request] ${req.method} ${req.path}`);
   next();
 });
@@ -352,17 +357,19 @@ app.post("/api/mnemonic/validate-key", async (req, res) => {
       }
     });
 
-    const testResponse = await testAi.models.generateContent({
-      model: modelToValidate,
+    const { response: testResponse, modelUsed } = await geminiRouter.generate(testAi, modelToValidate, {
       contents: "Respond with exactly: OK",
-    });
+    }, res.locals.geminiDeadline);
 
     if (!testResponse.text) {
       throw new Error("Empty response received from the test model.");
     }
 
-    res.json({ success: true });
+    res.json({ success: true, modelUsed });
   } catch (error: any) {
+    if (error instanceof ModelRoutingError) {
+      return res.status(503).json({ error: error.code, details: error.message });
+    }
     console.error("API Key Validation error:", error);
     
     const errMessage = error.message || String(error);
@@ -371,8 +378,9 @@ app.post("/api/mnemonic/validate-key", async (req, res) => {
 
     if (isQuotaExhausted || isServiceUnavailable) {
       return res.json({ 
-        success: true, 
-        warning: `The API key is structurally valid, but the Gemini API is currently busy or rate-limited: ${errMessage}. Key saved successfully.`
+        success: true,
+        verified: false,
+        warning: "Key saved, but Gemini is busy or rate-limited. Successful generation has not yet been verified. Try Test All Keys again later."
       });
     }
 
@@ -429,7 +437,10 @@ app.post("/api/mnemonic/generate", async (req, res) => {
       });
     }
 
-    const { medicalText, specialty, mnemonicStyle, selectedModel = DEFAULT_MODEL } = req.body;
+    const { medicalText, specialty, mnemonicStyle, selectedModel = DEFAULT_MODEL } = req.body || {};
+    if (!parseModelTier(selectedModel)) {
+      return res.status(400).json({ error: "MODEL_CONFIGURATION_ERROR", details: "Choose Flash, Flash-Lite, or Pro and try again." });
+    }
 
     if (!medicalText || typeof medicalText !== "string" || !medicalText.trim()) {
       return res.status(400).json({ error: "Medical text or concept is required." });
@@ -567,40 +578,10 @@ You must return a structured JSON response matching the required schema. Ensure 
       required: ["bestMnemonic", "alternativeMnemonics"]
     };
 
-    let response: any = null;
-    let attempts = 0;
-    const maxAttempts = 2;
-    const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-    while (attempts < maxAttempts) {
-      try {
-        attempts++;
-        response = await requestAi.models.generateContent({
-          model: selectedModel,
-          contents: userPrompt,
-          config: {
-            systemInstruction,
-            responseMimeType: "application/json",
-            responseSchema
-          }
-        });
-        break; // Success, break retry loop
-      } catch (geminiError: any) {
-        const isUnavailable = isServiceUnavailableError(geminiError);
-
-        if (isUnavailable && attempts < maxAttempts) {
-          const backoffMs = 500;
-          console.warn(`Gemini API 503/UNAVAILABLE error encountered (attempt ${attempts}/${maxAttempts}). Retrying in ${backoffMs}ms... Error:`, geminiError.message || geminiError);
-          await delay(backoffMs);
-        } else {
-          throw geminiError;
-        }
-      }
-    }
-
-    if (!response) {
-      throw new Error("No response received from Gemini model after maximum attempts.");
-    }
+    const { response, modelUsed } = await geminiRouter.generate(requestAi, selectedModel, {
+      contents: userPrompt,
+      config: { systemInstruction, responseMimeType: "application/json", responseSchema },
+    }, res.locals.geminiDeadline);
 
     const responseText = response.text;
     if (!responseText) {
@@ -609,17 +590,20 @@ You must return a structured JSON response matching the required schema. Ensure 
 
     let result;
     try {
-      result = JSON.parse(responseText.trim());
+      result = parseMnemonicResponse(responseText);
     } catch (parseError) {
-      console.error("Failed to parse Gemini response as JSON:", parseError, "Raw response was:", responseText);
-      return res.status(500).json({
+      console.error("Gemini returned an invalid study guide.");
+      return res.status(502).json({
         error: "Failed to generate mnemonics.",
         details: "The AI returned an unexpected response format. Please try again."
       });
     }
-    res.json(result);
+    res.json({ ...result, modelUsed });
 
   } catch (error: any) {
+    if (error instanceof ModelRoutingError) {
+      return res.status(503).json({ error: error.code, details: error.message });
+    }
     console.error("Mnemonic generation error:", error);
     const errMessage = error.message || String(error);
     const numericStatus = getErrorStatus(error);
@@ -702,7 +686,10 @@ app.post("/api/mnemonic/ocr-extract", express.json({ limit: "15mb" }), async (re
       });
     }
 
-    const { images } = req.body || {};
+    const { images, selectedModel = DEFAULT_MODEL } = req.body || {};
+    if (!parseModelTier(selectedModel)) {
+      return res.status(400).json({ error: "MODEL_CONFIGURATION_ERROR", details: "Choose Flash, Flash-Lite, or Pro and try again." });
+    }
 
     if (!images || !Array.isArray(images) || images.length === 0 || images.length > 3) {
       return res.status(400).json({ error: "images array is required and must contain 1-3 images." });
@@ -747,7 +734,7 @@ Separate each image's transcription with the exact literal line "---MEMORAID_PAG
 If there is no readable text in a given image, output exactly: NO_TEXT_FOUND
 for that image rather than skipping it.`;
 
-    // Call generateContent using DEFAULT_MODEL with multimodal contents containing all images in order
+    // Use the same model family and lifecycle handling as mnemonic generation.
     const contents = [
       ...images.map((img: any) => ({
         inlineData: { mimeType: img.mimeType, data: img.imageBase64 }
@@ -755,10 +742,9 @@ for that image rather than skipping it.`;
       { text: promptText }
     ];
 
-    const modelResponse = await requestAi.models.generateContent({
-      model: DEFAULT_MODEL,
+    const { response: modelResponse, modelUsed } = await geminiRouter.generate(requestAi, selectedModel, {
       contents
-    });
+    }, res.locals.geminiDeadline);
 
     const modelOutput = modelResponse.text;
     const rawText = modelOutput ? modelOutput.trim() : "";
@@ -779,9 +765,12 @@ for that image rather than skipping it.`;
       }
     }
 
-    return res.json({ pages });
+    return res.json({ pages, modelUsed });
 
   } catch (error: any) {
+    if (error instanceof ModelRoutingError) {
+      return res.status(503).json({ error: error.code, details: error.message });
+    }
     console.error("OCR extraction error:", error);
     const errMessage = error.message || String(error);
     const numericStatus = getErrorStatus(error);

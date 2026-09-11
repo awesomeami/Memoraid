@@ -1,8 +1,6 @@
 export const MAX_MEDICAL_TEXT_LENGTH = 4000;
 
-export const DEFAULT_MODEL = "gemini-3.6-flash";
-export const LITE_MODEL = "gemini-3.1-flash-lite";
-export const PRO_MODEL = "gemini-3.1-pro-preview";
+export { DEFAULT_MODEL, LITE_MODEL, PRO_MODEL } from "./models";
 
 export interface MnemonicExpansionItem {
   letter: string;
@@ -29,6 +27,7 @@ export interface MnemonicResult {
   alternativeMnemonics: MnemonicDetails[];
   isFavorite?: boolean;
   isPinned?: boolean;
+  modelUsed?: string;
 }
 
 export type ActiveTab = "generate" | "history" | "favorites" | "settings";

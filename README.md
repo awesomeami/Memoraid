@@ -67,6 +67,44 @@
 
 ## 🔑 Environment Configuration
 
+### Model lifecycle and reliability
+
+The browser saves a model family (`flash`, `flash-lite`, or `pro`). Old saved model IDs
+are migrated automatically, including requests from tabs opened before a deployment.
+Generation, OCR, and key validation use the same server-side resolver. OCR now follows
+the selected family instead of always using the default Flash model.
+
+Flash uses **`gemini-flash-latest`** and Flash-Lite uses **`gemini-flash-lite-latest`**.
+Google maintains these aliases, so normal model-version changes need no code edits.
+Pro retains `gemini-3.1-pro-preview`. Each backend request makes **one Gemini call**:
+there is no model listing, discovery, fallback chain, or SDK retry.
+
+The Gemini call has a maximum 45-second timeout, reduced if authentication or rate-limit
+checks have used time from a 50-second request deadline. This leaves headroom below the
+60-second function limit configured in `vercel.json`. The browser times out each generation
+or OCR request after 55 seconds. Upstream model outages and timeouts stop promptly with a
+service error, rather than trying the same unavailable model on every saved key.
+
+On quota or invalid-key errors, the browser tries the next configured key in a **new HTTP
+request**. Each key is tried at most once, starting at the last successful slot. The same
+generation ID is retained so automatic retries count as one generation for the app's rate
+limit. Authentication failures and application rate limits stop rotation. Successful results
+record the concrete model version returned by Google when available.
+
+For a tested rollout or rollback, optionally set `GEMINI_FLASH_MODEL`,
+`GEMINI_FLASH_LITE_MODEL`, or `GEMINI_PRO_MODEL` to **one** model ID from that family in
+Vercel (examples in `.env.example`). Redeploy after changing an environment variable.
+No source edit is needed for these overrides.
+
+Google's [latest aliases](https://ai.google.dev/gemini-api/docs/models#model-versions)
+can move to stable, preview, or experimental releases; behavior, price, and key access can
+change. Aliases reduce version maintenance but cannot guarantee future compatibility or
+availability. Use a pin if a release needs rollback. Generated study-guide structure is
+validated before saving; this does not independently verify clinical facts.
+
+Run `npm test` for alias selection, time budgets, key rotation, API integration, and React flow tests.
+The test suite mocks Gemini and Firebase: it never consumes real API quota or changes cloud data.
+
 Configure these inside `.env` (local) or your hosting provider's environment variables:
 
 ```env
@@ -133,9 +171,9 @@ CMD ["npm", "run", "start"]
 **Vercel:**
 1. Connect your GitHub repository to Vercel.
 2. In Project Settings → Environment Variables, add `FIREBASE_SERVICE_ACCOUNT_KEY`.
-3. Deploy — Vercel runs `vite build` for the frontend and builds `api/index.ts` as a serverless function automatically. All `/api/*` routes are rewritten to it, with a 60-second `maxDuration`.
+3. Deploy — Vercel installs with `npm ci` using `package-lock.json`, runs `npm run build`, and builds `api/index.ts` as a serverless function automatically. All `/api/*` routes are rewritten to it, with a 60-second `maxDuration`. The explicit install command avoids selecting the older AI Studio `bun.lock`.
 
 **Known gotchas:**
 - **Authorized domains:** Add your Vercel domain (and any custom domain) to Firebase Console → Authentication → Settings → Authorized domains, or Google Sign-In will fail.
-- **Function timeout:** Vercel Hobby plans default to a 10s function timeout regardless of the `maxDuration` set in `vercel.json` — Pro-model requests and multi-key retries can exceed that. Upgrade or adjust expectations accordingly.
+- **Function timeout:** This project sets `maxDuration` to 60 seconds. Gemini calls are capped at 45 seconds; quota-driven key rotation uses separate function invocations. Actual platform limits also depend on your Vercel project settings.
 - **Request size limit:** Vercel Functions cap request bodies at 4.5MB. The photo OCR feature compresses images client-side before upload, but very large or numerous photos can still approach this ceiling.

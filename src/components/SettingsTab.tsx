@@ -39,10 +39,12 @@ export default function SettingsTab({ currentUser, onKeysChanged, selectedModel 
     ["idle", "idle", "idle", "idle", "idle"]
   );
   const [slotErrors, setSlotErrors] = useState<(string | null)[]>([null, null, null, null, null]);
+  const [slotWarnings, setSlotWarnings] = useState<(string | null)[]>([null, null, null, null, null]);
   const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
 
   // Load keys & active index on mount or when currentUser changes
   useEffect(() => {
+    setSlotWarnings([null, null, null, null, null]);
     const uid = currentUser?.uid || "guest";
     const keysStorageKey = `medmnemonic_gemini_keys::${uid}`;
     const indexStorageKey = `medmnemonic_gemini_key_index::${uid}`;
@@ -159,6 +161,7 @@ export default function SettingsTab({ currentUser, onKeysChanged, selectedModel 
       if (!response.ok) {
         throw new Error(data.details || data.error || "Failed to validate API Key.");
       }
+      setSlotWarnings(prev => prev.map((warning, idx) => idx === slotIdx ? data.warning || null : warning));
 
       const uid = currentUser?.uid || "guest";
       const keysStorageKey = `medmnemonic_gemini_keys::${uid}`;
@@ -267,6 +270,7 @@ export default function SettingsTab({ currentUser, onKeysChanged, selectedModel 
 
   // Clear/remove key from slot
   const handleClearSlot = (slotIdx: number) => {
+    setSlotWarnings(prev => prev.map((warning, idx) => idx === slotIdx ? null : warning));
     const uid = currentUser?.uid || "guest";
     const keysStorageKey = `medmnemonic_gemini_keys::${uid}`;
     const indexStorageKey = `medmnemonic_gemini_key_index::${uid}`;
@@ -309,6 +313,7 @@ export default function SettingsTab({ currentUser, onKeysChanged, selectedModel 
   };
 
   const handleClearAllKeys = () => {
+    setSlotWarnings([null, null, null, null, null]);
     const uid = currentUser?.uid || "guest";
     const keysStorageKey = `medmnemonic_gemini_keys::${uid}`;
     const indexStorageKey = `medmnemonic_gemini_key_index::${uid}`;
@@ -540,6 +545,7 @@ export default function SettingsTab({ currentUser, onKeysChanged, selectedModel 
                       placeholder="AIzaSy... (Paste Gemini API key here)"
                       value={keyVal}
                       onChange={(e) => {
+                        setSlotWarnings(prev => prev.map((warning, index) => index === idx ? null : warning));
                         setKeys(prev => {
                           const updated = [...prev];
                           updated[idx] = e.target.value;
@@ -647,7 +653,7 @@ export default function SettingsTab({ currentUser, onKeysChanged, selectedModel 
                 {valState === "valid" && !hasChanged && (
                   <div className="mt-2 flex items-center gap-1.5 text-[11px] text-green-600 dark:text-green-400">
                     <CheckCircle className="h-3.5 w-3.5 shrink-0" />
-                    Key is fully validated and stored locally.
+                    {slotWarnings[idx] ? "Key saved locally; verification is pending." : "Key saved locally."}
                   </div>
                 )}
 
@@ -658,6 +664,9 @@ export default function SettingsTab({ currentUser, onKeysChanged, selectedModel 
                       <span className="font-bold">Validation Error:</span> {error}
                     </div>
                   </div>
+                )}
+                {slotWarnings[idx] && !error && (
+                  <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">{slotWarnings[idx]}</p>
                 )}
               </div>
             );

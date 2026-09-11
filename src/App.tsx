@@ -1,5 +1,7 @@
 import React, { useState, useEffect, lazy, Suspense, useCallback } from "react";
 import { MnemonicResult, ActiveTab, MEDICAL_SPECIALTIES, MNEMONIC_STYLES, MnemonicDetails, MAX_MEDICAL_TEXT_LENGTH, DEFAULT_MODEL, LITE_MODEL, PRO_MODEL } from "./types";
+import { normalizeModelPreference, modelLabel } from "./models";
+import { GenError, requestWithKeyRotation } from "./lib/key-rotation";
 import Header from "./components/Header";
 import HeroSection from "./components/HeroSection";
 import MnemonicCard from "./components/MnemonicCard";
@@ -24,14 +26,6 @@ const LOADING_STATUSES = [
   "Assessing cognitive recall and memorability score...",
   "Rigorously verifying medical accuracy against literature..."
 ];
-
-class GenError extends Error {
-  type: "key" | "server" | "auth";
-  constructor(message: string, type: "key" | "server" | "auth") {
-    super(message);
-    this.type = type;
-  }
-}
 
 export default function App() {
   const [history, setHistory] = useState<MnemonicResult[]>([]);
@@ -153,7 +147,7 @@ export default function App() {
     return localStorage.getItem("medmnemonic_mnemonic_style") || "Any";
   });
   const [selectedModel, setSelectedModel] = useState<string>(() => {
-    return localStorage.getItem("medmnemonic_selected_model") || DEFAULT_MODEL;
+    return normalizeModelPreference(localStorage.getItem("medmnemonic_selected_model"));
   });
 
   // Output states
@@ -387,158 +381,21 @@ export default function App() {
         ocrQueue.map(item => compressImage(item.file, item.objectUrl, controller.signal))
       );
 
-      let success = false;
-      let attempts = 0;
-      let currentTryIndex = startIndex;
-      let appRateLimitError: string | null = null;
-      let lastKeyErrorMessage: string | null = null;
-      let resPages: any[] = [];
-
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-
-      try {
-        const idToken = await currentUser.getIdToken();
-        headers["Authorization"] = `Bearer ${idToken}`;
-      } catch (tokenErr) {
-        console.error("Failed to acquire Firebase ID Token for OCR:", tokenErr);
-      }
-
-      while (attempts < configuredKeys.length && !success) {
-        if (controller.signal.aborted) {
-          throw new DOMException("Aborted", "AbortError");
-        }
-
-        const currentItem = configuredKeys[currentTryIndex];
-        const keyToUse = currentItem.key;
-        const keySlotIndex = currentItem.index;
-
-        headers["X-User-Gemini-Key"] = keyToUse.trim();
-
-        try {
-          const response = await fetch("/api/mnemonic/ocr-extract", {
-            method: "POST",
-            headers,
-            signal: controller.signal,
-            body: JSON.stringify({
-              images: compressedImages
-            }),
-          });
-
-          let resData: any = null;
-          let isJson = true;
-          try {
-            resData = await response.json();
-          } catch (jsonErr) {
-            isJson = false;
-          }
-
-          if (isJson && resData && resData.error === "APP_RATE_LIMIT") {
-            appRateLimitError = resData.details || "Rate limit exceeded. Please try again later.";
-            break;
-          }
-
-          if (!isJson) { if (response.status === 504) { throw new GenError("The server timed out waiting for the AI to respond. Please try again.", "server"); } else if (response.status === 502 || response.status === 503) { throw new GenError("The AI service is currently experiencing high demand and returned a gateway error. Please try again later.", "server"); } throw new GenError("The server returned an unexpected response — this looks like a temporary backend issue, not a problem with your API keys.", "server"); }
-
-          const isKeyOrQuotaError = 
-            response.status === 403 || 
-            response.status === 429 || 
-            response.status === 503 ||
-            (resData && (
-              resData.error === "GEMINI_KEY_ERROR" || 
-              resData.error === "RESOURCE_EXHAUSTED" || 
-              resData.error === "SERVICE_UNAVAILABLE"
-            ));
-
-          if (response.status === 401) {
-            throw new GenError("Your session expired or sign-in failed. Please sign in again.", "auth");
-          }
-
-          if (response.status === 413) {
-            throw new GenError(resData.error || "The image payload is too large.", "server");
-          }
-
-          if (response.status === 502 && resData && resData.error === "OCR_PARSE_ERROR") {
-            throw new GenError("A formatting error occurred while reading the text. Please try uploading the image again.", "server");
-          }
-
-          if (!response.ok) {
-            let errorMsg = resData.details || resData.error || `HTTP ${response.status}`;
-            if (errorMsg.includes("Firebase Admin SDK is not initialized")) {
-              errorMsg = "The app's backend isn't fully configured yet. Please try again later or contact the site owner.";
-            }
-
-            if (isKeyOrQuotaError) {
-              lastKeyErrorMessage = `Key slot ${keySlotIndex + 1}: ${errorMsg}`;
-              console.warn(`Key slot ${keySlotIndex + 1} hit key/quota-specific error during OCR (${response.status}). Retrying with next available key...`);
-              currentTryIndex = (currentTryIndex + 1) % configuredKeys.length;
-              attempts++;
-              continue;
-            } else {
-              throw new GenError(errorMsg, "server");
-            }
-          }
-
-          if (resData && Array.isArray(resData.pages)) {
-            resPages = resData.pages;
-          } else {
-            throw new GenError("Invalid response format received from OCR service.", "server");
-          }
-
-          success = true;
-          setActiveKeyIndex(keySlotIndex);
-          const uid = currentUser?.uid || "guest";
-          localStorage.setItem(`medmnemonic_gemini_key_index::${uid}`, String(keySlotIndex));
-        } catch (err: any) {
-          if (err.name === "AbortError") {
-            throw err;
-          }
-          if (err instanceof GenError || (err && (err.type === "server" || err.type === "key" || err.type === "auth"))) {
-            throw err;
-          }
-          const isRetryableErr = err.message && (
-            err.message.includes("403") ||
-            err.message.includes("429") || 
-            err.message.includes("RESOURCE_EXHAUSTED") || 
-            err.message.includes("503") || 
-            err.message.includes("UNAVAILABLE") || 
-            err.message.includes("high demand") ||
-            err.message.includes("temporary") ||
-            err.message.toLowerCase().includes("api_key_invalid") ||
-            err.message.toLowerCase().includes("api key") ||
-            err.message.toLowerCase().includes("apikey") ||
-            err.message.toLowerCase().includes("permission denied") ||
-            err.message.toLowerCase().includes("invalid key") ||
-            err.message.toLowerCase().includes("revoked")
-          );
-
-          if (err.message && (err.message.includes("401") || err.message.toLowerCase().includes("unauthorized"))) {
-            throw new GenError("Your session expired or sign-in failed. Please sign in again.", "auth");
-          }
-
-          if (isRetryableErr) {
-            lastKeyErrorMessage = `Key slot ${keySlotIndex + 1}: ${err.message}`;
-            console.warn(`Key slot ${keySlotIndex + 1} hit retryable or key-specific error during OCR: ${err.message}. Retrying with next available key...`);
-            currentTryIndex = (currentTryIndex + 1) % configuredKeys.length;
-            attempts++;
-            continue;
-          }
-          throw new GenError("The server returned an unexpected response — this looks like a temporary backend issue, not a problem with your API keys.", "server");
-        }
-      }
-
-      if (appRateLimitError) {
-        throw new GenError(appRateLimitError, "server");
-      }
-
-      if (!success) {
-        if (lastKeyErrorMessage) {
-          throw new GenError(`All configured Gemini API Keys failed. Last error: ${lastKeyErrorMessage}`, "key");
-        } else {
-          throw new GenError("All configured Gemini API Keys are currently unavailable or rate-limited. The model is experiencing high demand (503) or quota limits. Please try again in a few moments.", "key");
-        }
-      }
+      const idToken = await currentUser.getIdToken();
+      const { data: ocrData, keySlotIndex } = await requestWithKeyRotation<{
+        pages: { index: number; extractedText: string }[];
+        modelUsed?: string;
+      }>({
+        url: "/api/mnemonic/ocr-extract",
+        keys: configuredKeys, startIndex,
+        headers: { Authorization: `Bearer ${idToken}` },
+        body: { images: compressedImages, selectedModel },
+        signal: controller.signal,
+      });
+      if (!Array.isArray(ocrData.pages)) throw new GenError("Invalid response format received from OCR service.", "server");
+      const resPages = ocrData.pages;
+      setActiveKeyIndex(keySlotIndex);
+      localStorage.setItem(`medmnemonic_gemini_key_index::${currentUser.uid}`, String(keySlotIndex));
 
       // Process pages and append to medicalText
       let newExtractedParts: string[] = [];
@@ -999,137 +856,18 @@ export default function App() {
         throw new GenError("Please configure at least one Gemini API Key in the Settings tab.", "key");
       }
 
-      let data: any = null;
-      let success = false;
-      let attempts = 0;
-      let currentTryIndex = startIndex;
-      let appRateLimitError: string | null = null;
-      let lastKeyErrorMessage: string | null = null;
-
-      while (attempts < configuredKeys.length && !success) {
-        const currentItem = configuredKeys[currentTryIndex];
-        const keyToUse = currentItem.key;
-        const keySlotIndex = currentItem.index;
-
-        headers["X-User-Gemini-Key"] = keyToUse.trim();
-
-        try {
-          const response = await fetch("/api/mnemonic/generate", {
-            method: "POST",
-            headers,
-            body: JSON.stringify({
-              medicalText,
-              specialty,
-              mnemonicStyle: mnemonicStyle === "Any" ? "" : mnemonicStyle,
-              selectedModel
-            }),
-          });
-
-          let resData: any = null;
-          let isJson = true;
-          try {
-            resData = await response.json();
-          } catch (jsonErr) {
-            isJson = false;
-          }
-
-          if (isJson && resData && resData.error === "APP_RATE_LIMIT") {
-            appRateLimitError = resData.details || "Rate limit exceeded. Please try again later.";
-            break;
-          }
-
-          if (!isJson) { if (response.status === 504) { throw new GenError("The server timed out waiting for the AI to respond. Please try again.", "server"); } else if (response.status === 502 || response.status === 503) { throw new GenError("The AI service is currently experiencing high demand and returned a gateway error. Please try again later.", "server"); } throw new GenError("The server returned an unexpected response — this looks like a temporary backend issue, not a problem with your API keys.", "server"); }
-
-          const isKeyOrQuotaError = 
-            response.status === 403 || 
-            response.status === 429 || 
-            response.status === 503 ||
-            (resData && (
-              resData.error === "GEMINI_KEY_ERROR" || 
-              resData.error === "RESOURCE_EXHAUSTED" || 
-              resData.error === "SERVICE_UNAVAILABLE"
-            ));
-
-          if (response.status === 401) {
-            throw new GenError("Your session expired or sign-in failed. Please sign in again.", "auth");
-          }
-
-          if (!response.ok) {
-            let errorMsg = resData.details || resData.error || `HTTP ${response.status}`;
-            if (errorMsg.includes("Firebase Admin SDK is not initialized")) {
-              errorMsg = "The app's backend isn't fully configured yet. Please try again later or contact the site owner.";
-            }
-
-            if (isKeyOrQuotaError) {
-              lastKeyErrorMessage = `Key slot ${keySlotIndex + 1}: ${errorMsg}`;
-              console.warn(`Key slot ${keySlotIndex + 1} hit key/quota-specific error (${response.status}). Retrying with next available key...`);
-              currentTryIndex = (currentTryIndex + 1) % configuredKeys.length;
-              attempts++;
-              continue;
-            } else {
-              if (errorMsg.includes("Firebase Admin SDK") || errorMsg.includes("Rate limit") || errorMsg.includes("exceeds the maximum")) {
-                throw new GenError(errorMsg, "server");
-              }
-              throw new GenError("The server returned an unexpected response — this looks like a temporary backend issue, not a problem with your API keys.", "server");
-            }
-          }
-
-          // Successful call!
-          data = resData;
-          success = true;
-          setGeneratedKeySlot(keySlotIndex + 1);
-
-          // Save last-working index in storage and component state
-          const uid = currentUser?.uid || "guest";
-          const indexStorageKey = `medmnemonic_gemini_key_index::${uid}`;
-          localStorage.setItem(indexStorageKey, String(keySlotIndex));
-          setActiveKeyIndex(keySlotIndex);
-        } catch (err: any) {
-          if (err instanceof GenError || (err && (err.type === "server" || err.type === "key" || err.type === "auth"))) {
-            throw err;
-          }
-          const isRetryableErr = err.message && (
-            err.message.includes("403") ||
-            err.message.includes("429") || 
-            err.message.includes("RESOURCE_EXHAUSTED") || 
-            err.message.includes("503") || 
-            err.message.includes("UNAVAILABLE") || 
-            err.message.includes("high demand") ||
-            err.message.includes("temporary") ||
-            err.message.toLowerCase().includes("api_key_invalid") ||
-            err.message.toLowerCase().includes("api key") ||
-            err.message.toLowerCase().includes("apikey") ||
-            err.message.toLowerCase().includes("permission denied") ||
-            err.message.toLowerCase().includes("invalid key") ||
-            err.message.toLowerCase().includes("revoked")
-          );
-
-          if (err.message && (err.message.includes("401") || err.message.toLowerCase().includes("unauthorized"))) {
-            throw new GenError("Your session expired or sign-in failed. Please sign in again.", "auth");
-          }
-
-          if (isRetryableErr) {
-            lastKeyErrorMessage = `Key slot ${keySlotIndex + 1}: ${err.message}`;
-            console.warn(`Key slot ${keySlotIndex + 1} hit retryable or key-specific error: ${err.message}. Retrying with next available key...`);
-            currentTryIndex = (currentTryIndex + 1) % configuredKeys.length;
-            attempts++;
-            continue;
-          }
-          throw new GenError("The server returned an unexpected response — this looks like a temporary backend issue, not a problem with your API keys.", "server");
-        }
-      }
-
-      if (appRateLimitError) {
-        throw new GenError(appRateLimitError, "server");
-      }
-
-      if (!success) {
-        if (lastKeyErrorMessage) {
-          throw new GenError(`All configured Gemini API Keys failed. Last error: ${lastKeyErrorMessage}`, "key");
-        } else {
-          throw new GenError("All configured Gemini API Keys are currently unavailable or rate-limited. The model is experiencing high demand (503) or quota limits. Please try again in a few moments.", "key");
-        }
-      }
+      const { data, keySlotIndex } = await requestWithKeyRotation<{
+        bestMnemonic: MnemonicDetails;
+        alternativeMnemonics: MnemonicDetails[];
+        modelUsed?: string;
+      }>({
+        url: "/api/mnemonic/generate",
+        keys: configuredKeys, startIndex, headers,
+        body: { medicalText, specialty, mnemonicStyle: mnemonicStyle === "Any" ? "" : mnemonicStyle, selectedModel },
+      });
+      setGeneratedKeySlot(keySlotIndex + 1);
+      localStorage.setItem(`medmnemonic_gemini_key_index::${currentUser.uid}`, String(keySlotIndex));
+      setActiveKeyIndex(keySlotIndex);
 
       const newMnemonic: MnemonicResult = {
         id: crypto.randomUUID(),
@@ -1140,7 +878,8 @@ export default function App() {
         bestMnemonic: data.bestMnemonic,
         alternativeMnemonics: data.alternativeMnemonics || [],
         isFavorite: false,
-        isPinned: false
+        isPinned: false,
+        ...(data.modelUsed ? { modelUsed: data.modelUsed } : {}),
       };
 
       // If user is logged in with Google, save to Firestore
@@ -1797,6 +1536,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => setSelectedModel(LITE_MODEL)}
+                            aria-pressed={selectedModel === LITE_MODEL}
                             className={`flex flex-col items-start rounded-lg p-2 border text-left transition-all ${
                               selectedModel === LITE_MODEL
                                 ? "border-blue-500 bg-blue-50/10 dark:bg-blue-950/20"
@@ -1815,6 +1555,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => setSelectedModel(DEFAULT_MODEL)}
+                            aria-pressed={selectedModel === DEFAULT_MODEL}
                             className={`flex flex-col items-start rounded-lg p-2 border text-left transition-all ${
                               selectedModel === DEFAULT_MODEL
                                 ? "border-blue-500 bg-blue-50/10 dark:bg-blue-950/20"
@@ -1824,7 +1565,7 @@ export default function App() {
                             <span className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1">
                               Gemini Flash
                               <span className="rounded bg-blue-100 dark:bg-blue-950 px-1 py-0.2 text-[8px] font-bold text-blue-700 dark:text-blue-400">
-                                Free
+                                Balanced
                               </span>
                             </span>
                             <span className="text-[9px] text-slate-400 mt-0.5">Blazing fast & smart</span>
@@ -1833,6 +1574,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => setSelectedModel(PRO_MODEL)}
+                            aria-pressed={selectedModel === PRO_MODEL}
                             className={`flex flex-col items-start rounded-lg p-2 border text-left transition-all ${
                               selectedModel === PRO_MODEL
                                 ? "border-blue-500 bg-blue-50/10 dark:bg-blue-950/20"
@@ -2015,7 +1757,7 @@ export default function App() {
                         >
                           <div className="flex items-center gap-2">
                             <Sparkles className="h-4 w-4 text-emerald-500 animate-pulse shrink-0" />
-                            <span>Generated successfully using Key Slot {generatedKeySlot}</span>
+                            <span>Generated using Key Slot {generatedKeySlot}{activeMnemonic.modelUsed ? ` · ${modelLabel(activeMnemonic.modelUsed)}` : ""}</span>
                           </div>
                           <button
                             type="button"
