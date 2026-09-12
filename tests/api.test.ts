@@ -109,6 +109,41 @@ describe("Express → model resolver → response and key rotation", () => {
     expect(state.calls.map(c => c.key)).toEqual([`a-${state.serial}`, `b-${state.serial}`]);
     expect(state.calls[0].params.contents).toEqual(state.calls[1].params.contents);
   });
+  it("recovers high demand through 3.8 → 3.7 → 3.6 in one generation and restarts at 3.8 next time", async () => {
+    const overload = { status: 503, message: 'This model is currently experiencing high demand.' };
+    state.outcomes.push(overload, overload, { text: guide }, { text: guide });
+    const body = { medicalText: "fixture notes", selectedModel: "flash" };
+    const response = await post("/api/mnemonic/generate", body);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ bestMnemonic: details, modelUsed: "gemini-3.6-flash" });
+    expect(state.calls.map(c => c.params.model)).toEqual(["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash"]);
+    expect(new Set(state.calls.map(c => c.key)).size).toBe(1);
+    expect(state.documents.get("rate_limits/test-user").generate_count).toBe(1);
+    expect((await post("/api/mnemonic/generate", body)).status).toBe(200);
+    expect(state.calls[3].params.model).toBe("gemini-3.8-flash");
+  });
+  it("rotates keys immediately if a fallback model hits quota, retaining one generation ID", async () => {
+    state.outcomes.push({ status: 503, message: "Model overloaded" }, { status: 429 }, { text: guide });
+    const result = await requestWithKeyRotation({
+      url: base + "/api/mnemonic/generate", keys: [{ key: `a-${state.serial}`, index: 0 }, { key: `b-${state.serial}`, index: 3 }], startIndex: 0,
+      headers: { Authorization: "Bearer test-token", "X-Generation-ID": "fallback-and-key-rotation" },
+      body: { medicalText: "fixture notes", selectedModel: "flash" },
+    });
+    expect(result).toMatchObject({ keySlotIndex: 3, data: { modelUsed: "gemini-3.8-flash" } });
+    expect(state.calls.map(c => c.params.model)).toEqual(["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.8-flash"]);
+    expect(state.calls.map(c => c.key)).toEqual([`a-${state.serial}`, `a-${state.serial}`, `b-${state.serial}`]);
+    expect(state.documents.get("rate_limits/test-user").generate_count).toBe(1);
+  });
+  it("returns a clear overload error without rotating keys when all three Flash models are busy", async () => {
+    state.outcomes.push(...Array.from({ length: 3 }, () => ({ status: 503, message: "Model overloaded" })));
+    const fetcher = vi.fn<typeof fetch>(fetch);
+    await expect(requestWithKeyRotation({
+      url: base + "/api/mnemonic/generate", keys: [{ key: "a", index: 0 }, { key: "b", index: 1 }], startIndex: 0,
+      headers: { Authorization: "Bearer test-token" }, body: { medicalText: "fixture notes", selectedModel: "flash" }, fetcher,
+    })).rejects.toMatchObject({ type: "server", message: expect.stringContaining("overloaded") });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(state.calls).toHaveLength(3);
+  });
   it("key validation uses the same resolver and does not label an unavailable model as an invalid key", async () => {
     state.outcomes.push({ status: 404 });
     const response = await post("/api/mnemonic/validate-key", { modelToValidate: "flash" });

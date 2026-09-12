@@ -7,24 +7,27 @@ import { GeminiRouter } from "../src/lib/gemini-router";
 let server: Server;
 let ai: GoogleGenAI;
 let status: number;
+let statusSequence: number[];
+let errorMessage: string;
 let requests: { url?: string; body: any }[];
 beforeAll(async () => {
   server = createServer(async (req, res) => {
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(chunk);
     requests.push({ url: req.url, body: JSON.parse(Buffer.concat(chunks).toString()) });
-    if (status === 0) return; // Deliberately stalled upstream; client must abort.
-    res.writeHead(status, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(status === 200 ? {
+    const code = statusSequence.shift() ?? status;
+    if (code === 0) return; // Deliberately stalled upstream; client must abort.
+    res.writeHead(code, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(code === 200 ? {
       candidates: [{ content: { role: "model", parts: [{ text: '{"ok":true}' }] }, finishReason: "STOP" }],
       modelVersion: "resolved-model-version",
-    } : { error: { code: status, status: status === 429 ? "RESOURCE_EXHAUSTED" : "UNAVAILABLE", message: "Fixture failure" } }));
+    } : { error: { code, status: code === 429 ? "RESOURCE_EXHAUSTED" : "UNAVAILABLE", message: errorMessage } }));
   });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const port = (server.address() as { port: number }).port;
   ai = new GoogleGenAI({ apiKey: "local-test-key", httpOptions: { baseUrl: `http://127.0.0.1:${port}` } });
 });
-beforeEach(() => { status = 200; requests = []; });
+beforeEach(() => { status = 200; statusSequence = []; errorMessage = "Fixture failure"; requests = []; });
 afterAll(async () => {
   server.closeAllConnections();
   await new Promise<void>(resolve => server.close(() => resolve()));
@@ -56,5 +59,20 @@ describe("real Gemini SDK transport", () => {
     status = 0;
     await expect(new GeminiRouter({ env: {}, now: () => 0 }).generate(ai, "flash", { contents: "x" }, 100)).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
     expect(requests).toHaveLength(1);
+  });
+  it("recognizes Google's real high-demand error shape and sends the same request to each fallback once", async () => {
+    statusSequence = [503, 503, 200];
+    errorMessage = "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.";
+    const result = await new GeminiRouter({ env: {} }).generate(ai, "flash", {
+      contents: "Fixture prompt", config: { responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties: { ok: { type: Type.BOOLEAN } } } },
+    });
+    expect(result.response.text).toBe('{"ok":true}');
+    expect(requests.map(r => r.url)).toEqual([
+      "/v1beta/models/gemini-3.8-flash:generateContent",
+      "/v1beta/models/gemini-3.7-flash:generateContent",
+      "/v1beta/models/gemini-3.6-flash:generateContent",
+    ]);
+    expect(requests[1].body).toEqual(requests[0].body);
+    expect(requests[2].body).toEqual(requests[0].body);
   });
 });

@@ -77,15 +77,17 @@ Generation and key validation follow the selected family. OCR always uses
 Flash is pinned to **`gemini-3.8-flash`**, Google's current stable Flash release
 (verified September 12, 2026). Flash-Lite uses **`gemini-flash-lite-latest`**,
 which Google updates automatically as model versions change.
-Pro retains `gemini-3.1-pro-preview`. Each backend request makes **one Gemini call**:
-there is no model listing, discovery, fallback chain, or SDK retry.
+Pro retains `gemini-3.1-pro-preview`. Flash starts with 3.8; only a Google HTTP 503
+high-demand/overload error advances to **3.7, then 3.6**. Each model is tried once with
+the same key, prompt, and response schema. Other errors do not change models. Flash-Lite,
+OCR, and Pro still make one Gemini call. There is no model listing, discovery, or SDK retry.
 
-The Gemini call uses the time remaining in a 59-second request budget, including parsing,
+All Gemini attempts share the time remaining in a 59-second request budget, including parsing,
 authentication, and rate-limit checks. One second remains to return the response within the
 60-second function limit configured in `vercel.json`. The browser allows 65 seconds per
 generation or OCR request to include network overhead; this does not extend Vercel's limit.
-Upstream model outages and timeouts stop promptly with a
-service error, rather than trying the same unavailable model on every saved key.
+A fallback starts only if at least 10 seconds remain. If all configured Flash versions are
+overloaded, or the deadline expires, the app reports a service error without cycling through keys.
 
 On quota or invalid-key errors, the browser tries the next configured key in a **new HTTP
 request**. Each key is tried at most once, starting at the last successful slot. The same
@@ -96,7 +98,8 @@ record the concrete model version returned by Google when available.
 For a tested rollout or rollback, optionally set `GEMINI_FLASH_MODEL`,
 `GEMINI_FLASH_LITE_MODEL`, or `GEMINI_PRO_MODEL` to **one** model ID from that family in
 Vercel (examples in `.env.example`). Redeploy after changing an environment variable.
-No source edit is needed for these overrides. They do not affect OCR.
+No source edit is needed for these overrides. Pins to 3.8, 3.7, or 3.6 start at that point
+in the Flash sequence. Other model pins remain exact. These overrides do not affect OCR.
 
 Google's [latest aliases](https://ai.google.dev/gemini-api/docs/models#model-versions), used for Flash-Lite,
 can move to stable, preview, or experimental releases; behavior, price, and key access can
@@ -107,6 +110,8 @@ validated before saving; this does not independently verify clinical facts.
 
 Run `npm test` for model selection, time budgets, key rotation, API integration, and React flow tests.
 The test suite mocks Gemini and Firebase: it never consumes real API quota or changes cloud data.
+Failure logs record the model, attempt, HTTP status, elapsed time, and deadline status,
+without recording API keys, prompts, or raw provider responses.
 
 Configure these inside `.env` (local) or your hosting provider's environment variables:
 

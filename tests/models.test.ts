@@ -10,7 +10,7 @@ function client() {
     generateContent: vi.fn<GeminiClient["models"]["generateContent"]>().mockResolvedValue({ text: "OK" } as never),
   } };
 }
-const router = (env = {}) => new GeminiRouter({ env });
+const router = (env = {}) => new GeminiRouter({ env, now: () => 0 });
 
 describe("saved model preferences", () => {
   it.each([
@@ -92,6 +92,74 @@ describe("direct model selection", () => {
     }));
     await expect(new GeminiRouter({ env: {}, now: () => 0 }).generate(ai, "flash", { contents: "x" }, 25)).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
     expect(ai.models.generateContent).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Flash high-demand fallback", () => {
+  const overloaded = () => error(503, JSON.stringify({ error: { code: 503, status: "UNAVAILABLE", message: "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later." } }));
+  it("recovers a 3.8 overload with 3.7 and records the actual responding model", async () => {
+    const ai = client();
+    ai.models.generateContent.mockRejectedValueOnce(overloaded());
+    const result = await router().generate(ai, "flash", { contents: "notes" });
+    expect(ai.models.generateContent.mock.calls.map(([p]) => p.model)).toEqual(["gemini-3.8-flash", "gemini-3.7-flash"]);
+    expect(result.modelUsed).toBe("gemini-3.7-flash");
+    expect(ai.models.list).not.toHaveBeenCalled();
+  });
+  it("tries 3.8 → 3.7 → 3.6 with identical prompts and one shrinking deadline", async () => {
+    const ai = client();
+    let now = 0;
+    ai.models.generateContent.mockImplementationOnce(async () => { now = 25_000; throw overloaded(); });
+    ai.models.generateContent.mockImplementationOnce(async () => { now = 40_000; throw overloaded(); });
+    const params = { contents: "notes", config: { systemInstruction: "accuracy", responseMimeType: "application/json" } };
+    const result = await new GeminiRouter({ env: {}, now: () => now }).generate(ai, "flash", params, 59_000);
+    const calls = ai.models.generateContent.mock.calls.map(([p]) => p);
+    expect(calls.map(p => p.model)).toEqual(["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash"]);
+    expect(calls.map(p => p.config?.httpOptions?.timeout)).toEqual([59_000, 34_000, 19_000]);
+    for (const call of calls) {
+      expect(call).toMatchObject(params);
+      expect(call.config?.abortSignal).toBe(calls[0].config?.abortSignal);
+      expect(call.config?.httpOptions?.retryOptions).toEqual({ attempts: 1 });
+    }
+    expect(result.modelUsed).toBe("gemini-3.6-flash");
+  });
+  it("stops after all three Flash models report overload", async () => {
+    const ai = client(); ai.models.generateContent.mockRejectedValue(overloaded());
+    await expect(router().generate(ai, "flash", { contents: "notes" })).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE", message: expect.stringContaining("overloaded") });
+    expect(ai.models.generateContent).toHaveBeenCalledTimes(3);
+  });
+  it.each(["flash-lite", "pro"])("does not apply the Flash fallback to %s", async tier => {
+    const ai = client(); ai.models.generateContent.mockRejectedValue(overloaded());
+    await expect(router().generate(ai, tier, { contents: "notes" })).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+    expect(ai.models.generateContent).toHaveBeenCalledTimes(1);
+  });
+  it("does not start a fallback when less than 10 seconds remain", async () => {
+    const ai = client(); let now = 0;
+    ai.models.generateContent.mockImplementation(async () => { now = 50_000; throw overloaded(); });
+    await expect(new GeminiRouter({ env: {}, now: () => now }).generate(ai, "flash", { contents: "notes" }, 59_000)).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+    expect(ai.models.generateContent).toHaveBeenCalledTimes(1);
+  });
+  it("distinguishes a passed deadline from overload without starting another model", async () => {
+    const ai = client(); let now = 0;
+    ai.models.generateContent.mockImplementation(async () => { now = 59_000; throw overloaded(); });
+    await expect(new GeminiRouter({ env: {}, now: () => now }).generate(ai, "flash", { contents: "notes" }, 59_000)).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE", message: expect.stringContaining("time limit") });
+    expect(ai.models.generateContent).toHaveBeenCalledTimes(1);
+  });
+  it("starts an operator pin at its configured Flash version", async () => {
+    const ai = client(); ai.models.generateContent.mockRejectedValueOnce(overloaded());
+    expect((await router({ GEMINI_FLASH_MODEL: "gemini-3.7-flash" }).generate(ai, "flash", { contents: "notes" })).modelUsed).toBe("gemini-3.6-flash");
+    expect(ai.models.generateContent.mock.calls.map(([p]) => p.model)).toEqual(["gemini-3.7-flash", "gemini-3.6-flash"]);
+  });
+  it("keeps an unlisted operator pin exact", async () => {
+    const ai = client(); ai.models.generateContent.mockRejectedValue(overloaded());
+    await expect(router({ GEMINI_FLASH_MODEL: "gemini-3.5-flash" }).generate(ai, "flash", { contents: "notes" })).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+    expect(ai.models.generateContent).toHaveBeenCalledTimes(1);
+  });
+  it("records diagnosis without logging keys, prompts, or raw provider messages", async () => {
+    const log = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const ai = client(); ai.models.generateContent.mockRejectedValue(error(503, "high demand; private-test-key; private-provider-body"));
+    await expect(router().generate(ai, "flash", { contents: "private-prompt" })).rejects.toThrow();
+    expect(log).toHaveBeenCalledWith("Gemini request failed", expect.objectContaining({ model: "gemini-3.8-flash", upstreamStatus: 503, deadlineExceeded: false }));
+    expect(JSON.stringify(log.mock.calls)).not.toMatch(/private-test-key|private-provider-body|private-prompt/);
   });
 });
 

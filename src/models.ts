@@ -4,8 +4,10 @@ export const LITE_MODEL = "flash-lite";
 export const PRO_MODEL = "pro";
 export type ModelTier = typeof DEFAULT_MODEL | typeof LITE_MODEL | typeof PRO_MODEL;
 
+export const FLASH_MODELS = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash"];
+
 export const MODEL_IDS: Record<ModelTier, string> = {
-  flash: "gemini-3.8-flash",
+  flash: FLASH_MODELS[0],
   "flash-lite": "gemini-flash-lite-latest",
   pro: "gemini-3.1-pro-preview",
 };
