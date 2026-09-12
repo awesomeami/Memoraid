@@ -389,7 +389,7 @@ export default function App() {
         url: "/api/mnemonic/ocr-extract",
         keys: configuredKeys, startIndex,
         headers: { Authorization: `Bearer ${idToken}` },
-        body: { images: compressedImages, selectedModel },
+        body: { images: compressedImages },
         signal: controller.signal,
       });
       if (!Array.isArray(ocrData.pages)) throw new GenError("Invalid response format received from OCR service.", "server");

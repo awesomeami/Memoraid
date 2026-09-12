@@ -34,12 +34,12 @@ describe("direct model selection", () => {
     expect(result.modelUsed).toBe(MODEL_IDS[tier]);
     expect(ai.models.list).not.toHaveBeenCalled();
     expect(ai.models.generateContent).toHaveBeenCalledTimes(1);
-    expect(ai.models.generateContent.mock.calls[0][0]).toMatchObject({ ...request, model: MODEL_IDS[tier], config: { httpOptions: { timeout: 45_000, retryOptions: { attempts: 1 } } } });
+    expect(ai.models.generateContent.mock.calls[0][0]).toMatchObject({ ...request, model: MODEL_IDS[tier], config: { httpOptions: { timeout: 59_000, retryOptions: { attempts: 1 } } } });
   });
-  it("sends the Flash latest alias even for an old browser request", async () => {
+  it.each(["gemini-3.6-flash", "gemini-flash-latest"])("sends stable Flash even for an old browser request using %s", async preference => {
     const ai = client();
-    await router().generate(ai, "gemini-3.6-flash", { contents: "x" });
-    expect(ai.models.generateContent.mock.calls[0][0].model).toBe("gemini-flash-latest");
+    await router().generate(ai, preference, { contents: "x" });
+    expect(ai.models.generateContent.mock.calls[0][0].model).toBe("gemini-3.8-flash");
   });
   it("records the resolved model version returned by Google", async () => {
     const ai = client();
@@ -71,18 +71,18 @@ describe("direct model selection", () => {
   });
   it("honors a single operator pin without crossing families", async () => {
     const ai = client();
-    expect((await router({ GEMINI_FLASH_MODEL: "gemini-3.8-flash" }).generate(ai, "flash", { contents: "x" })).modelUsed).toBe("gemini-3.8-flash");
+    expect((await router({ GEMINI_FLASH_MODEL: "gemini-3.7-flash" }).generate(ai, "flash", { contents: "x" })).modelUsed).toBe("gemini-3.7-flash");
     await expect(router({ GEMINI_FLASH_LITE_MODEL: "gemini-3.8-flash" }).generate(ai, "flash-lite", { contents: "x" })).rejects.toMatchObject({ code: "MODEL_CONFIGURATION_ERROR" });
     await expect(router({ GEMINI_FLASH_MODEL: "gemini-3.8-flash,gemini-3.6-flash" }).generate(ai, "flash", { contents: "x" })).rejects.toMatchObject({ code: "MODEL_CONFIGURATION_ERROR" });
   });
   it("reduces the Gemini timeout when authentication has consumed the request budget", async () => {
     const ai = client();
-    await new GeminiRouter({ env: {}, now: () => 30_000 }).generate(ai, "flash", { contents: "x" }, 50_000);
-    expect(ai.models.generateContent.mock.calls[0][0].config?.httpOptions?.timeout).toBe(20_000);
+    await new GeminiRouter({ env: {}, now: () => 3_000 }).generate(ai, "flash", { contents: "x" }, 59_000);
+    expect(ai.models.generateContent.mock.calls[0][0].config?.httpOptions?.timeout).toBe(56_000);
   });
   it("does not start a call after the request deadline", async () => {
     const ai = client();
-    await expect(new GeminiRouter({ env: {}, now: () => 51_000 }).generate(ai, "flash", { contents: "x" }, 50_000)).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+    await expect(new GeminiRouter({ env: {}, now: () => 59_000 }).generate(ai, "flash", { contents: "x" }, 59_000)).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
     expect(ai.models.generateContent).not.toHaveBeenCalled();
   });
   it("aborts an outstanding call at the deadline and returns a service error", async () => {

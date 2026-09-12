@@ -27,7 +27,8 @@ export async function requestWithKeyRotation<T>({
     const controller = new AbortController();
     const cancel = () => controller.abort();
     signal?.addEventListener("abort", cancel, { once: true });
-    const timer = setTimeout(cancel, 55_000);
+    // Allow the full 60-second server window plus upload/response network overhead.
+    const timer = setTimeout(cancel, 65_000);
     try {
       const response = await fetcher(url, {
         method: "POST",

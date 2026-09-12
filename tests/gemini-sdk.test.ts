@@ -31,7 +31,7 @@ afterAll(async () => {
 });
 
 describe("real Gemini SDK transport", () => {
-  it.each(["flash", "flash-lite"] as const)("serializes the %s latest alias and structured request correctly", async tier => {
+  it.each([["flash", "gemini-3.8-flash"], ["flash-lite", "gemini-flash-lite-latest"]])("serializes the %s model and structured request correctly", async (tier, model) => {
     const { response, modelUsed } = await new GeminiRouter({ env: {} }).generate(ai, tier, {
       contents: "Fixture prompt",
       config: { systemInstruction: "Fixture instruction", responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties: { ok: { type: Type.BOOLEAN } } } },
@@ -39,7 +39,7 @@ describe("real Gemini SDK transport", () => {
     expect(response.text).toBe('{"ok":true}');
     expect(modelUsed).toBe("resolved-model-version");
     expect(requests).toHaveLength(1);
-    expect(requests[0].url).toContain(`/models/gemini-${tier}-latest:generateContent`);
+    expect(requests[0].url).toContain(`/models/${model}:generateContent`);
     expect(requests[0].body).toMatchObject({
       contents: [{ parts: [{ text: "Fixture prompt" }] }],
       systemInstruction: { parts: [{ text: "Fixture instruction" }] },

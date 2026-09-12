@@ -71,18 +71,20 @@
 
 The browser saves a model family (`flash`, `flash-lite`, or `pro`). Old saved model IDs
 are migrated automatically, including requests from tabs opened before a deployment.
-Generation, OCR, and key validation use the same server-side resolver. OCR now follows
-the selected family instead of always using the default Flash model.
+Generation and key validation follow the selected family. OCR always uses
+**`gemini-flash-lite-latest`**, independent of the selected family or environment pins.
 
-Flash uses **`gemini-flash-latest`** and Flash-Lite uses **`gemini-flash-lite-latest`**.
-Google maintains these aliases, so normal model-version changes need no code edits.
+Flash is pinned to **`gemini-3.8-flash`**, Google's current stable Flash release
+(verified September 12, 2026). Flash-Lite uses **`gemini-flash-lite-latest`**,
+which Google updates automatically as model versions change.
 Pro retains `gemini-3.1-pro-preview`. Each backend request makes **one Gemini call**:
 there is no model listing, discovery, fallback chain, or SDK retry.
 
-The Gemini call has a maximum 45-second timeout, reduced if authentication or rate-limit
-checks have used time from a 50-second request deadline. This leaves headroom below the
-60-second function limit configured in `vercel.json`. The browser times out each generation
-or OCR request after 55 seconds. Upstream model outages and timeouts stop promptly with a
+The Gemini call uses the time remaining in a 59-second request budget, including parsing,
+authentication, and rate-limit checks. One second remains to return the response within the
+60-second function limit configured in `vercel.json`. The browser allows 65 seconds per
+generation or OCR request to include network overhead; this does not extend Vercel's limit.
+Upstream model outages and timeouts stop promptly with a
 service error, rather than trying the same unavailable model on every saved key.
 
 On quota or invalid-key errors, the browser tries the next configured key in a **new HTTP
@@ -94,15 +96,16 @@ record the concrete model version returned by Google when available.
 For a tested rollout or rollback, optionally set `GEMINI_FLASH_MODEL`,
 `GEMINI_FLASH_LITE_MODEL`, or `GEMINI_PRO_MODEL` to **one** model ID from that family in
 Vercel (examples in `.env.example`). Redeploy after changing an environment variable.
-No source edit is needed for these overrides.
+No source edit is needed for these overrides. They do not affect OCR.
 
-Google's [latest aliases](https://ai.google.dev/gemini-api/docs/models#model-versions)
+Google's [latest aliases](https://ai.google.dev/gemini-api/docs/models#model-versions), used for Flash-Lite,
 can move to stable, preview, or experimental releases; behavior, price, and key access can
 change. Aliases reduce version maintenance but cannot guarantee future compatibility or
-availability. Use a pin if a release needs rollback. Generated study-guide structure is
+availability. Flash uses a [stable version](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash)
+for predictable releases; review its pin when Google retires that version. Generated study-guide structure is
 validated before saving; this does not independently verify clinical facts.
 
-Run `npm test` for alias selection, time budgets, key rotation, API integration, and React flow tests.
+Run `npm test` for model selection, time budgets, key rotation, API integration, and React flow tests.
 The test suite mocks Gemini and Firebase: it never consumes real API quota or changes cloud data.
 
 Configure these inside `.env` (local) or your hosting provider's environment variables:
@@ -175,5 +178,5 @@ CMD ["npm", "run", "start"]
 
 **Known gotchas:**
 - **Authorized domains:** Add your Vercel domain (and any custom domain) to Firebase Console → Authentication → Settings → Authorized domains, or Google Sign-In will fail.
-- **Function timeout:** This project sets `maxDuration` to 60 seconds. Gemini calls are capped at 45 seconds; quota-driven key rotation uses separate function invocations. Actual platform limits also depend on your Vercel project settings.
+- **Function timeout:** This project sets `maxDuration` to 60 seconds. Gemini uses the remaining time in a 59-second request budget, leaving one second to respond; quota-driven key rotation uses separate function invocations. Actual platform limits also depend on your Vercel project settings.
 - **Request size limit:** Vercel Functions cap request bodies at 4.5MB. The photo OCR feature compresses images client-side before upload, but very large or numerous photos can still approach this ceiling.

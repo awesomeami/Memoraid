@@ -59,7 +59,7 @@ export class GeminiRouter {
       throw new ModelRoutingError("MODEL_CONFIGURATION_ERROR", `The server's ${ENV_NAMES[tier]} setting must contain one ${tier} model ID. Please contact the site owner.`);
     }
     const now = (this.options.now ?? Date.now)();
-    const timeout = Math.min(45_000, (requestDeadline ?? now + 45_000) - now);
+    const timeout = Math.min(59_000, (requestDeadline ?? now + 59_000) - now);
     if (timeout <= 0) throw new ModelRoutingError("SERVICE_UNAVAILABLE", "The request ran out of time before reaching Gemini. Please try again.");
     const abortSignal = AbortSignal.timeout(timeout);
 
@@ -88,3 +88,5 @@ export class GeminiRouter {
 }
 
 export const geminiRouter = new GeminiRouter();
+// OCR always follows Flash-Lite latest, independent of generation model pins.
+export const ocrRouter = new GeminiRouter({ env: { GEMINI_FLASH_LITE_MODEL: "gemini-flash-lite-latest" } });

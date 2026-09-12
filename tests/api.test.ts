@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Server } from "node:http";
 import { requestWithKeyRotation } from "../src/lib/key-rotation";
 
@@ -53,6 +53,7 @@ beforeAll(async () => {
 });
 afterAll(async () => { await new Promise<void>((resolve, reject) => server.close(e => e ? reject(e) : resolve())); });
 beforeEach(() => { state.calls = []; state.outcomes = []; state.documents.clear(); state.serial++; });
+afterEach(() => { vi.unstubAllEnvs(); });
 
 function post(path: string, body: unknown, token = "test-token") {
   return fetch(base + path, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, "X-User-Gemini-Key": `api-key-${state.serial}` }, body: JSON.stringify(body) });
@@ -66,11 +67,12 @@ describe("Express → model resolver → response and key rotation", () => {
     expect(await response.json()).toMatchObject({ bestMnemonic: details, modelUsed: "gemini-3.8-flash" });
     expect(state.calls[0].params.config.responseMimeType).toBe("application/json");
     expect(state.calls[0].params.config.systemInstruction).toContain("RIGOROUS MEDICAL ACCURACY");
-    expect(state.calls[0].params.model).toBe("gemini-flash-latest");
-    expect(state.calls[0].params.config.httpOptions.timeout).toBeLessThanOrEqual(45_000);
+    expect(state.calls[0].params.model).toBe("gemini-3.8-flash");
+    expect(state.calls[0].params.config.httpOptions.timeout).toBeGreaterThan(55_000);
+    expect(state.calls[0].params.config.httpOptions.timeout).toBeLessThanOrEqual(59_000);
     expect(state.calls).toHaveLength(1);
   });
-  it("rotates a 429 key in a separate request with the same alias while counting a generation once", async () => {
+  it("rotates a 429 key in a separate request with the same stable model while counting a generation once", async () => {
     state.outcomes.push({ status: 429 }, { text: guide });
     const result = await requestWithKeyRotation<{ modelUsed: string }>({
       url: base + "/api/mnemonic/generate", keys: [{ key: `a-${state.serial}`, index: 0 }, { key: `b-${state.serial}`, index: 3 }], startIndex: 0,
@@ -78,17 +80,34 @@ describe("Express → model resolver → response and key rotation", () => {
       body: { medicalText: "fixture notes", selectedModel: "flash" },
     });
     expect(result.keySlotIndex).toBe(3);
-    expect(state.calls.map(c => c.params.model)).toEqual(["gemini-flash-latest", "gemini-flash-latest"]);
+    expect(state.calls.map(c => c.params.model)).toEqual(["gemini-3.8-flash", "gemini-3.8-flash"]);
     expect(state.calls.map(c => c.key)).toEqual([`a-${state.serial}`, `b-${state.serial}`]);
     expect(state.documents.get("rate_limits/test-user").generate_count).toBe(1);
   });
-  it("OCR honors Lite, preserves image order, and returns pages", async () => {
+  it.each([undefined, "flash", "flash-lite", "pro", "gemini-3.5-flash-lite", "gemini-flash-latest", "invalid-old-preference"])("OCR always uses Lite latest despite selection %s or generation pins, preserving image order and pages", async selectedModel => {
+    vi.stubEnv("GEMINI_FLASH_LITE_MODEL", "gemini-3.5-flash-lite");
     state.outcomes.push({ text: "page one\n---MEMORAID_PAGE_BREAK---\npage two" });
     const images = [{ mimeType: "image/jpeg", imageBase64: "YWJj" }, { mimeType: "image/png", imageBase64: "ZGVm" }];
-    const response = await post("/api/mnemonic/ocr-extract", { images, selectedModel: "gemini-3.5-flash-lite" });
+    const response = await post("/api/mnemonic/ocr-extract", { images, selectedModel });
+    expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ pages: [{ index: 0, extractedText: "page one" }, { index: 1, extractedText: "page two" }], modelUsed: "gemini-3.5-flash-lite" });
     expect(state.calls[0].params.contents.slice(0, 2)).toEqual(images.map(i => ({ inlineData: { mimeType: i.mimeType, data: i.imageBase64 } })));
     expect(state.calls[0].params.model).toBe("gemini-flash-lite-latest");
+    expect(state.calls[0].params.config.httpOptions.timeout).toBeGreaterThan(55_000);
+    expect(state.calls[0].params.config.httpOptions.timeout).toBeLessThanOrEqual(59_000);
+    expect(state.calls).toHaveLength(1);
+  });
+  it("rotates an exhausted OCR key while keeping Lite latest and the same images", async () => {
+    state.outcomes.push({ status: 429 }, { text: "page one" });
+    const result = await requestWithKeyRotation({
+      url: base + "/api/mnemonic/ocr-extract", keys: [{ key: `a-${state.serial}`, index: 0 }, { key: `b-${state.serial}`, index: 3 }], startIndex: 0,
+      headers: { Authorization: "Bearer test-token" },
+      body: { images: [{ mimeType: "image/jpeg", imageBase64: "YWJj" }], selectedModel: "pro" },
+    });
+    expect(result).toMatchObject({ keySlotIndex: 3, data: { pages: [{ index: 0, extractedText: "page one" }] } });
+    expect(state.calls.map(c => c.params.model)).toEqual(["gemini-flash-lite-latest", "gemini-flash-lite-latest"]);
+    expect(state.calls.map(c => c.key)).toEqual([`a-${state.serial}`, `b-${state.serial}`]);
+    expect(state.calls[0].params.contents).toEqual(state.calls[1].params.contents);
   });
   it("key validation uses the same resolver and does not label an unavailable model as an invalid key", async () => {
     state.outcomes.push({ status: 404 });

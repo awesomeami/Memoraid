@@ -8,8 +8,8 @@ import { getFirestore, Firestore, Timestamp } from "firebase-admin/firestore";
 import fs from "fs";
 
 import { MAX_MEDICAL_TEXT_LENGTH, DEFAULT_MODEL } from "./types.js";
-import { geminiRouter, ModelRoutingError } from "./lib/gemini-router.js";
-import { parseModelTier } from "./models.js";
+import { geminiRouter, ocrRouter, ModelRoutingError } from "./lib/gemini-router.js";
+import { LITE_MODEL, parseModelTier } from "./models.js";
 import { parseMnemonicResponse } from "./lib/mnemonic-response.js";
 
 // Safe dynamic loading of firebase-applet-config.json for Node.js ESM compatibility
@@ -269,8 +269,8 @@ const app = express();
 
 // Simple request logger middleware (method + path)
 app.use((req, res, next) => {
-  // Leave headroom below vercel.json's 60-second limit, including auth/rate-limit work.
-  res.locals.geminiDeadline = Date.now() + 50_000;
+  // Budget 59 seconds including parsing/auth/rate limits; reserve 1 second to respond.
+  res.locals.geminiDeadline = Date.now() + 59_000;
   console.log(`[Request] ${req.method} ${req.path}`);
   next();
 });
@@ -686,10 +686,7 @@ app.post("/api/mnemonic/ocr-extract", express.json({ limit: "15mb" }), async (re
       });
     }
 
-    const { images, selectedModel = DEFAULT_MODEL } = req.body || {};
-    if (!parseModelTier(selectedModel)) {
-      return res.status(400).json({ error: "MODEL_CONFIGURATION_ERROR", details: "Choose Flash, Flash-Lite, or Pro and try again." });
-    }
+    const { images } = req.body || {};
 
     if (!images || !Array.isArray(images) || images.length === 0 || images.length > 3) {
       return res.status(400).json({ error: "images array is required and must contain 1-3 images." });
@@ -734,7 +731,7 @@ Separate each image's transcription with the exact literal line "---MEMORAID_PAG
 If there is no readable text in a given image, output exactly: NO_TEXT_FOUND
 for that image rather than skipping it.`;
 
-    // Use the same model family and lifecycle handling as mnemonic generation.
+    // OCR always uses Flash-Lite latest, even for requests from older browser tabs.
     const contents = [
       ...images.map((img: any) => ({
         inlineData: { mimeType: img.mimeType, data: img.imageBase64 }
@@ -742,7 +739,7 @@ for that image rather than skipping it.`;
       { text: promptText }
     ];
 
-    const { response: modelResponse, modelUsed } = await geminiRouter.generate(requestAi, selectedModel, {
+    const { response: modelResponse, modelUsed } = await ocrRouter.generate(requestAi, LITE_MODEL, {
       contents
     }, res.locals.geminiDeadline);
 
