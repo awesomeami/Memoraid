@@ -1,6 +1,6 @@
 export const MAX_MEDICAL_TEXT_LENGTH = 4000;
 
-export { DEFAULT_MODEL, LITE_MODEL, PRO_MODEL } from "./models";
+export { DEFAULT_MODEL, LITE_MODEL, PRO_MODEL } from "./models.js";
 
 export interface MnemonicExpansionItem {
   letter: string;
